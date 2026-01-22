@@ -4,6 +4,7 @@ services:
     runtime: bun
     buildCommand: cd TokenHealth && bun install
     startCommand: cd TokenHealth && bun run start
+    healthCheckPath: /
     envVars:
       - key: PORT
         generateValue: true
@@ -15,6 +16,9 @@ services:
         sync: false
         optional: true
       - key: BASESCAN_API_KEY
+        sync: false
+        optional: true
+      - key: SOLSCAN_API_KEY
         sync: false
         optional: true
 

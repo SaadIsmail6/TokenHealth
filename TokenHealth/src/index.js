@@ -811,18 +811,36 @@ console.log(`Using PORT: ${port} (from ${process.env.PORT ? 'environment' : 'def
 
 // Use Bun.serve to serve the Hono app
 // Store the server reference to keep it alive
+// Start the server immediately to bind the port for Render's port scanner
 const server = Bun.serve({
     port,
     hostname,
     fetch: app.fetch,
 })
 
+// Log immediately after server starts
 console.log(`Server running on ${hostname}:${port}`)
 console.log(`Health check: http://${hostname}:${port}/`)
 console.log(`Webhook endpoint: http://${hostname}:${port}/webhook`)
 console.log(`Discovery endpoint: http://${hostname}:${port}/.well-known/agent-metadata.json`)
 
-// Keep the process alive
+// Verify server is actually listening
+if (server.port) {
+    console.log(`✅ Server successfully bound to port ${server.port}`)
+} else {
+    console.error('❌ Server failed to bind to port')
+}
+
+// Keep the process alive - prevent the script from exiting
+// This is critical for Render to detect the service
+setInterval(() => {
+    // Keep-alive heartbeat (every 30 seconds)
+    if (server.port) {
+        // Server is still running
+    }
+}, 30000)
+
+// Handle graceful shutdown
 process.on('SIGTERM', () => {
     console.log('SIGTERM received, shutting down gracefully')
     server.stop()
@@ -833,5 +851,10 @@ process.on('SIGINT', () => {
     console.log('SIGINT received, shutting down gracefully')
     server.stop()
     process.exit(0)
+})
+
+// Prevent the process from exiting
+process.on('exit', (code) => {
+    console.log(`Process exiting with code ${code}`)
 })
 
