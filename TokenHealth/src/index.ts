@@ -801,11 +801,27 @@ const port = parseInt(process.env.PORT || '5123', 10)
 const hostname = '0.0.0.0' // Bind to all interfaces for Render
 
 // Use Bun.serve to serve the Hono app
-// Note: We don't export default to prevent Bun from auto-serving and causing conflicts
-Bun.serve({
+// Store the server reference to keep it alive
+const server = Bun.serve({
     port,
     hostname,
     fetch: app.fetch,
 })
 
 console.log(`Server running on ${hostname}:${port}`)
+console.log(`Health check: http://${hostname}:${port}/`)
+console.log(`Webhook endpoint: http://${hostname}:${port}/webhook`)
+console.log(`Discovery endpoint: http://${hostname}:${port}/.well-known/agent-metadata.json`)
+
+// Keep the process alive
+process.on('SIGTERM', () => {
+    console.log('SIGTERM received, shutting down gracefully')
+    server.stop()
+    process.exit(0)
+})
+
+process.on('SIGINT', () => {
+    console.log('SIGINT received, shutting down gracefully')
+    server.stop()
+    process.exit(0)
+})
