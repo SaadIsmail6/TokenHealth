@@ -1,6 +1,9 @@
 {
   "name": "tokenhealth",
   "version": "1.0.0",
+  "scripts": {
+    "start": "cd TokenHealth && bun run start"
+  },
   "devDependencies": {
     "towns-bot": "^1.0.3"
   }
