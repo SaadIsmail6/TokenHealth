@@ -2,6 +2,7 @@
   "name": "tokenhealth",
   "version": "1.0.0",
   "scripts": {
+    "build": "cd TokenHealth && bun install",
     "start": "cd TokenHealth && bun run start"
   },
   "devDependencies": {
