@@ -752,8 +752,9 @@ bot.onReaction(async (handler, { reaction, channelId }) => {
     }
 })
 
-// Get the Hono app from bot.start()
-// bot.start() returns a Hono app - we'll serve it ourselves with proper configuration
+// CRITICAL: Export the app returned by bot.start()
+// This allows Bun/Render to automatically serve the app and handle webhooks correctly
+// bot.start() automatically sets up the /webhook endpoint for Towns Protocol
 const app = bot.start()
 
 // Health check endpoint for Render and Towns verification
@@ -788,65 +789,8 @@ app.get('/health', async (c) => {
 // NOTE: Do NOT add any routes for /webhook - bot.start() handles it automatically
 // Adding routes here would interfere with Towns Protocol's webhook handling
 
-// Serve the app explicitly with Render's PORT and bind to 0.0.0.0
-// This ensures the server is accessible from Render's load balancer
-// Render provides PORT as an environment variable - we must use it
-const port = parseInt(process.env.PORT || '5123', 10)
-const hostname = '0.0.0.0' // Bind to all interfaces for Render
-
-// Log the port being used for debugging
-if (!process.env.PORT) {
-    console.warn('WARNING: PORT environment variable not set. Using default 5123.')
-    console.warn('Render should provide PORT automatically. Check Render environment variables.')
-}
-console.log(`Using PORT: ${port} (from ${process.env.PORT ? 'environment' : 'default'})`)
-
-// Use Bun.serve to serve the Hono app
-// Store the server reference to keep it alive
-// Start the server immediately to bind the port for Render's port scanner
-const server = Bun.serve({
-    port,
-    hostname,
-    fetch: app.fetch,
-})
-
-// Log immediately after server starts
-console.log(`Server running on ${hostname}:${port}`)
-console.log(`Health check: http://${hostname}:${port}/`)
-console.log(`Webhook endpoint: http://${hostname}:${port}/webhook`)
-console.log(`Discovery endpoint: http://${hostname}:${port}/.well-known/agent-metadata.json`)
-
-// Verify server is actually listening
-if (server.port) {
-    console.log(`✅ Server successfully bound to port ${server.port}`)
-} else {
-    console.error('❌ Server failed to bind to port')
-}
-
-// Keep the process alive - prevent the script from exiting
-// This is critical for Render to detect the service
-setInterval(() => {
-    // Keep-alive heartbeat (every 30 seconds)
-    if (server.port) {
-        // Server is still running
-    }
-}, 30000)
-
-// Handle graceful shutdown
-process.on('SIGTERM', () => {
-    console.log('SIGTERM received, shutting down gracefully')
-    server.stop()
-    process.exit(0)
-})
-
-process.on('SIGINT', () => {
-    console.log('SIGINT received, shutting down gracefully')
-    server.stop()
-    process.exit(0)
-})
-
-// Prevent the process from exiting
-process.on('exit', (code) => {
-    console.log(`Process exiting with code ${code}`)
-})
+// Export the app as default so Bun/Render can automatically serve it
+// This is required for webhook POST requests to work correctly
+// When Bun sees `export default app`, it automatically serves the Hono app
+export default app
 
