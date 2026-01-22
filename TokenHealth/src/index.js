@@ -757,17 +757,14 @@ bot.onReaction(async (handler, { reaction, channelId }) => {
 const app = bot.start()
 
 // Health check endpoint for Render and Towns verification
+// Only handle GET and HEAD for root path - let POST go to /webhook
 app.get('/', async (c) => {
     return c.json({ status: 'ok', service: 'TokenHealth Bot' })
 })
 
-// Handle HEAD requests for health checks
-app.all('/', async (c) => {
-    if (c.req.method === 'HEAD') {
-        return c.text('', 200)
-    }
-    // For GET requests, return JSON (handled by the route above, but this is a fallback)
-    return c.json({ status: 'ok', service: 'TokenHealth Bot' })
+// Handle HEAD requests for health checks (Render uses this)
+app.head('/', async (c) => {
+    return c.text('', 200)
 })
 
 // Bot discovery endpoint
