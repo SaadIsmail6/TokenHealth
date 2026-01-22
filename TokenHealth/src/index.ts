@@ -776,6 +776,15 @@ bot.onReaction(async (handler, { reaction, channelId }) => {
 // bot.start() returns a Hono app - we'll serve it ourselves with proper configuration
 const app = bot.start()
 
+// Health check endpoint for Render and Towns verification
+app.get('/', async (c) => {
+    return c.json({ status: 'ok', service: 'TokenHealth Bot' })
+})
+
+app.head('/', async (c) => {
+    return c.text('', 200)
+})
+
 // Bot discovery endpoint
 app.get('/.well-known/agent-metadata.json', async (c) => {
     return c.json(await bot.getIdentityMetadata())
