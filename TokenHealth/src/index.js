@@ -757,14 +757,13 @@ bot.onReaction(async (handler, { reaction, channelId }) => {
 const app = bot.start()
 
 // Health check endpoint for Render and Towns verification
-// Only handle GET and HEAD for root path - let POST go to /webhook
+// Handle GET and HEAD for root path - POST requests go to /webhook (handled by bot.start())
 app.get('/', async (c) => {
+    // Hono automatically handles HEAD requests for GET routes
+    if (c.req.method === 'HEAD') {
+        return c.text('', 200)
+    }
     return c.json({ status: 'ok', service: 'TokenHealth Bot' })
-})
-
-// Handle HEAD requests for health checks (Render uses this)
-app.head('/', async (c) => {
-    return c.text('', 200)
 })
 
 // Bot discovery endpoint
