@@ -1,0 +1,8 @@
+{
+  "name": "tokenhealth",
+  "version": "1.0.0",
+  "devDependencies": {
+    "towns-bot": "^1.0.3"
+  }
+}
+
