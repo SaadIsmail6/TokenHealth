@@ -781,8 +781,13 @@ app.get('/', async (c) => {
     return c.json({ status: 'ok', service: 'TokenHealth Bot' })
 })
 
-app.head('/', async (c) => {
-    return c.text('', 200)
+// Handle HEAD requests for health checks
+app.all('/', async (c) => {
+    if (c.req.method === 'HEAD') {
+        return c.text('', 200)
+    }
+    // For GET requests, return JSON (handled by the route above, but this is a fallback)
+    return c.json({ status: 'ok', service: 'TokenHealth Bot' })
 })
 
 // Bot discovery endpoint
