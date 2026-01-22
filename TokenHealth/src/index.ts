@@ -795,6 +795,20 @@ app.get('/.well-known/agent-metadata.json', async (c) => {
     return c.json(await bot.getIdentityMetadata())
 })
 
+// Verify webhook endpoint exists (bot.start() should set this up automatically)
+// Add a test endpoint to verify routing works
+app.get('/health', async (c) => {
+    return c.json({ 
+        status: 'ok', 
+        service: 'TokenHealth Bot',
+        endpoints: {
+            webhook: '/webhook',
+            discovery: '/.well-known/agent-metadata.json',
+            health: '/health'
+        }
+    })
+})
+
 // Serve the app explicitly with Render's PORT and bind to 0.0.0.0
 // This ensures the server is accessible from Render's load balancer
 const port = parseInt(process.env.PORT || '5123', 10)
