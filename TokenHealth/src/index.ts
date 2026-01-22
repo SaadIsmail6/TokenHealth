@@ -773,8 +773,7 @@ bot.onReaction(async (handler, { reaction, channelId }) => {
 })
 
 // Get the Hono app from bot.start()
-// Note: bot.start() may start a server internally, but we'll serve it ourselves
-// to ensure proper port and hostname binding for Render
+// bot.start() returns a Hono app - we'll serve it ourselves with proper configuration
 const app = bot.start()
 
 // Bot discovery endpoint
@@ -783,10 +782,12 @@ app.get('/.well-known/agent-metadata.json', async (c) => {
 })
 
 // Serve the app explicitly with Render's PORT and bind to 0.0.0.0
+// This ensures the server is accessible from Render's load balancer
 const port = parseInt(process.env.PORT || '5123', 10)
 const hostname = '0.0.0.0' // Bind to all interfaces for Render
 
-// Use Bun.serve to serve the Hono app with proper configuration
+// Use Bun.serve to serve the Hono app
+// Note: We don't export default to prevent Bun from auto-serving and causing conflicts
 Bun.serve({
     port,
     hostname,
@@ -794,5 +795,3 @@ Bun.serve({
 })
 
 console.log(`Server running on ${hostname}:${port}`)
-
-export default app
