@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: tokenhealth-bot
+    runtime: bun
+    buildCommand: cd TokenHealth && bun install
+    startCommand: cd TokenHealth && bun run start
+    envVars:
+      - key: PORT
+        value: 5123
+      - key: APP_PRIVATE_DATA
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ETHERSCAN_API_KEY
+        sync: false
+        optional: true
+      - key: BASESCAN_API_KEY
+        sync: false
+        optional: true
+
