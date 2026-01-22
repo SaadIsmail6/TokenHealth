@@ -1,0 +1,9 @@
+[phases.setup]
+nixPkgs = ["nodejs-20_x", "bun"]
+
+[phases.install]
+cmds = ["cd TokenHealth && bun install"]
+
+[start]
+cmd = "cd TokenHealth && bun run start"
+

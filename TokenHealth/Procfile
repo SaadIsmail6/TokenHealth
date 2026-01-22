@@ -1,0 +1,2 @@
+web: cd TokenHealth && bun run start
+

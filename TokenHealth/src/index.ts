@@ -773,4 +773,10 @@ bot.onReaction(async (handler, { reaction, channelId }) => {
 })
 
 const app = bot.start()
+
+// Bot discovery endpoint
+app.get('/.well-known/agent-metadata.json', async (c) => {
+    return c.json(await bot.getIdentityMetadata())
+})
+
 export default app
