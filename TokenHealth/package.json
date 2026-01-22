@@ -10,6 +10,7 @@
         "dev": "bun run --watch src/index.ts",
         "lint": "eslint --format unix ./src  --max-warnings=0",
         "lint:fix": "eslint --format unix ./src  --max-warnings=0 --fix",
+        "prestart": "bun install",
         "start": "bun run src/index.ts",
         "typecheck": "tsc --noEmit"
     },
