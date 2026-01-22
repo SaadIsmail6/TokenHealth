@@ -811,8 +811,16 @@ app.get('/health', async (c) => {
 
 // Serve the app explicitly with Render's PORT and bind to 0.0.0.0
 // This ensures the server is accessible from Render's load balancer
+// Render provides PORT as an environment variable - we must use it
 const port = parseInt(process.env.PORT || '5123', 10)
 const hostname = '0.0.0.0' // Bind to all interfaces for Render
+
+// Log the port being used for debugging
+if (!process.env.PORT) {
+    console.warn('WARNING: PORT environment variable not set. Using default 5123.')
+    console.warn('Render should provide PORT automatically. Check Render environment variables.')
+}
+console.log(`Using PORT: ${port} (from ${process.env.PORT ? 'environment' : 'default'})`)
 
 // Use Bun.serve to serve the Hono app
 // Store the server reference to keep it alive
