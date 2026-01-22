@@ -809,6 +809,13 @@ app.get('/health', async (c) => {
     })
 })
 
+// Add a test endpoint to verify webhook routing (for debugging)
+// The actual webhook is handled by bot.start() at /webhook
+app.options('/webhook', async (c) => {
+    // Handle CORS preflight if needed
+    return c.text('', 200)
+})
+
 // Serve the app explicitly with Render's PORT and bind to 0.0.0.0
 // This ensures the server is accessible from Render's load balancer
 // Render provides PORT as an environment variable - we must use it
