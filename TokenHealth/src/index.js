@@ -789,12 +789,8 @@ app.get('/health', async (c) => {
     })
 })
 
-// Add a test endpoint to verify webhook routing (for debugging)
-// The actual webhook is handled by bot.start() at /webhook
-app.options('/webhook', async (c) => {
-    // Handle CORS preflight if needed
-    return c.text('', 200)
-})
+// NOTE: Do NOT add any routes for /webhook - bot.start() handles it automatically
+// Adding routes here would interfere with Towns Protocol's webhook handling
 
 // Serve the app explicitly with Render's PORT and bind to 0.0.0.0
 // This ensures the server is accessible from Render's load balancer
