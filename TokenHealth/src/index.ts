@@ -779,4 +779,7 @@ app.get('/.well-known/agent-metadata.json', async (c) => {
     return c.json(await bot.getIdentityMetadata())
 })
 
+// bot.start() returns a Hono app that needs to be served
+// For Bun, we export the server configuration
+// Bun will automatically use the PORT environment variable from Render
 export default app
