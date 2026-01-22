@@ -1,11 +1,9 @@
 import { makeTownsBot } from '@towns-protocol/bot'
-import commands from './commands'
+import commands from './commands.js'
 import { isAddress } from 'viem'
 
 // Address type detection
-type AddressType = 'evm' | 'solana' | 'invalid'
-
-function detectAddressType(address: string): AddressType {
+function detectAddressType(address) {
     // Solana addresses are base58 encoded, typically 32-44 characters
     // Common patterns: starts with letters/numbers, no 0x prefix
     const solanaPattern = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/
@@ -22,7 +20,7 @@ function detectAddressType(address: string): AddressType {
 }
 
 // API Functions
-async function fetchGoPlusData(address: string) {
+async function fetchGoPlusData(address) {
     try {
         // GoPlus Security API - Token Security endpoint
         const response = await fetch(
@@ -46,7 +44,7 @@ async function fetchGoPlusData(address: string) {
     }
 }
 
-async function fetchEtherscanData(address: string) {
+async function fetchEtherscanData(address) {
     try {
         // Try Etherscan first (Ethereum mainnet)
         const etherscanApiKey = process.env.ETHERSCAN_API_KEY || 'YourApiKeyToken'
@@ -123,7 +121,7 @@ async function fetchEtherscanData(address: string) {
     }
 }
 
-async function fetchSolscanData(address: string) {
+async function fetchSolscanData(address) {
     try {
         // Solscan API - Token meta endpoint
         const response = await fetch(
@@ -161,12 +159,9 @@ async function fetchSolscanData(address: string) {
     }
 }
 
-function calculateHealthScore(
-    goPlusData: any,
-    etherscanData: any,
-): { score: number; explanations: string[] } {
+function calculateHealthScore(goPlusData, etherscanData) {
     let score = 100
-    const explanations: string[] = []
+    const explanations = []
 
     if (goPlusData) {
         // Honeypot detection - major penalty
@@ -176,7 +171,7 @@ function calculateHealthScore(
         }
 
         // Owner privileges - various penalties
-        const ownerRisks: string[] = []
+        const ownerRisks = []
         if (goPlusData.owner_address && goPlusData.owner_address !== '0x0000000000000000000000000000000000000000') {
             if (goPlusData.can_take_back_ownership === '1') {
                 score -= 15
@@ -254,11 +249,7 @@ function calculateHealthScore(
     return { score, explanations: sortedExplanations }
 }
 
-function generateSolanaReport(
-    address: string,
-    solscanData: any,
-    isPreBuyQuery: boolean = false,
-): string {
+function generateSolanaReport(address, solscanData, isPreBuyQuery = false) {
     let report = '🩺 **TokenHealth Report**\n\n'
     
     // Token name and chain
@@ -270,7 +261,7 @@ function generateSolanaReport(
 
     // For Solana, we use a simplified scoring system
     let score = 80 // Start with a neutral score for Solana
-    const explanations: string[] = []
+    const explanations = []
 
     if (solscanData) {
         if (solscanData.verified) {
@@ -384,12 +375,7 @@ function generateSolanaReport(
     return report
 }
 
-function generateHealthReport(
-    address: string,
-    goPlusData: any,
-    etherscanData: any,
-    isPreBuyQuery: boolean = false,
-): string {
+function generateHealthReport(address, goPlusData, etherscanData, isPreBuyQuery = false) {
     let report = '🩺 **TokenHealth Report**\n\n'
     
     // Token name and chain
@@ -425,8 +411,8 @@ function generateHealthReport(
     report += `**Risk Level:** ${riskEmoji} **${riskLevel}**\n\n`
 
     // Risk Level Assessment (for detailed analysis)
-    const warnings: string[] = []
-    const risks: string[] = []
+    const warnings = []
+    const risks = []
 
     if (goPlusData) {
         // Check honeypot risk
@@ -435,7 +421,7 @@ function generateHealthReport(
         }
 
         // Check owner privileges
-        const ownerRisks: string[] = []
+        const ownerRisks = []
         if (goPlusData.owner_address && goPlusData.owner_address !== '0x0000000000000000000000000000000000000000') {
             if (goPlusData.can_take_back_ownership === '1') ownerRisks.push('Can take back ownership')
             if (goPlusData.is_blacklisted === '1') ownerRisks.push('Blacklist function enabled')
@@ -554,7 +540,7 @@ function generateHealthReport(
     return report
 }
 
-const bot = await makeTownsBot(process.env.APP_PRIVATE_DATA!, process.env.JWT_SECRET!, {
+const bot = await makeTownsBot(process.env.APP_PRIVATE_DATA, process.env.JWT_SECRET, {
     commands,
 })
 
@@ -595,7 +581,7 @@ bot.onSlashCommand('help', async (handler, { channelId }) => {
 })
 
 // Helper function to detect natural language safety queries
-function isSafetyQuery(message: string): boolean {
+function isSafetyQuery(message) {
     const lowerMessage = message.toLowerCase()
     const triggers = [
         'is this token safe',
@@ -617,7 +603,7 @@ function isSafetyQuery(message: string): boolean {
 }
 
 // Helper function to detect pre-buy queries
-function isPreBuyQuery(message: string): boolean {
+function isPreBuyQuery(message) {
     const lowerMessage = message.toLowerCase()
     const preBuyTriggers = [
         'should i buy',
@@ -631,7 +617,7 @@ function isPreBuyQuery(message: string): boolean {
 }
 
 // Helper function to extract address from message (EVM or Solana)
-function extractAddress(message: string): { address: string; type: AddressType } | null {
+function extractAddress(message) {
     // Try EVM address first
     const evmMatch = message.match(/0x[a-fA-F0-9]{40}/)
     if (evmMatch && isAddress(evmMatch[0])) {
@@ -654,7 +640,7 @@ function extractAddress(message: string): { address: string; type: AddressType }
 }
 
 // Helper function to check if bot is explicitly mentioned
-function isBotMentioned(message: string, botName: string = 'TokenHealth'): boolean {
+function isBotMentioned(message, botName = 'TokenHealth') {
     const lowerMessage = message.toLowerCase()
     const lowerBotName = botName.toLowerCase()
     // Check for @TokenHealth or just TokenHealth in mentions
@@ -663,13 +649,7 @@ function isBotMentioned(message: string, botName: string = 'TokenHealth'): boole
            (lowerMessage.includes(lowerBotName) && lowerMessage.includes('@'))
 }
 
-async function analyzeToken(
-    handler: any,
-    channelId: string,
-    address: string,
-    addressType: AddressType,
-    isPreBuy: boolean = false,
-): Promise<void> {
+async function analyzeToken(handler, channelId, address, addressType, isPreBuy = false) {
     try {
         // Send initial message
         await handler.sendMessage(channelId, '🔍 Analyzing token safety... This may take a moment.')
@@ -854,3 +834,4 @@ process.on('SIGINT', () => {
     server.stop()
     process.exit(0)
 })
+
