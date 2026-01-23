@@ -744,7 +744,6 @@ function generateSolanaReport(address, solscanData, dexscreenerData, isPreBuyQue
     }
 
     report += `\nNot financial advice. TokenHealth provides automated risk analysis only. Always DYOR.\n`
-    report += `Halal notice: TokenHealth provides information only and does not facilitate trading or gambling.`
 
     if (isPreBuyQuery) {
         report += `\n\nRecommendation: `
@@ -869,7 +868,6 @@ function generateHealthReport(address, goPlusData, explorerData, dexscreenerData
     }
 
     report += `\nNot financial advice. TokenHealth provides automated risk analysis only. Always DYOR.\n`
-    report += `Halal notice: TokenHealth provides information only and does not facilitate trading or gambling.`
 
     if (isPreBuyQuery) {
         report += `\n\nRecommendation: `
