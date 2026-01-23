@@ -923,9 +923,7 @@ bot.onSlashCommand('help', async (handler, { channelId }) => {
             '- Results are **informational only**, not financial advice\n' +
             '- Always do your own research (DYOR)\n\n' +
             '**Disclaimer:**\n' +
-            'Not financial advice. TokenHealth provides automated risk analysis only. Always DYOR.\n\n' +
-            '**Halal compliance:**\n' +
-            'TokenHealth provides information only and does not facilitate trading or gambling.',
+            'Not financial advice. TokenHealth provides automated risk analysis only. Always DYOR.',
     )
 })
 
