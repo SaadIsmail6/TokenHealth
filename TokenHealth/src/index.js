@@ -2,12 +2,30 @@ import { makeTownsBot } from '@towns-protocol/bot'
 import commands from './commands.js'
 import { isAddress } from 'viem'
 
+// Well-known tokens whitelist
+const WELL_KNOWN_TOKENS = {
+    '0xc02aa39b223fe8d0a0e5c4f27ead9083c756cc2': { name: 'Wrapped Ether', symbol: 'WETH', chain: 'Ethereum' },
+    '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': { name: 'USD Coin', symbol: 'USDC', chain: 'Ethereum' },
+    '0xdac17f958d2ee523a2206206994597c13d831ec7': { name: 'Tether USD', symbol: 'USDT', chain: 'Ethereum' },
+    '0x2260fac5e5542a773aa44fbcfedf7c193bc2c599': { name: 'Wrapped BTC', symbol: 'WBTC', chain: 'Ethereum' },
+    // Add Towns token when official contract is known
+}
+
 // Chain IDs for GoPlus API
 const CHAIN_IDS = {
     ETHEREUM: '1',
     BASE: '8453',
     ARBITRUM: '42161',
     BSC: '56',
+}
+
+// Check if input is a ticker symbol (reject these)
+function isTickerSymbol(input) {
+    const trimmed = input.trim()
+    // Ticker symbols typically start with $ or are short uppercase strings
+    if (trimmed.startsWith('$')) return true
+    if (/^[A-Z]{2,10}$/.test(trimmed) && !trimmed.startsWith('0x') && trimmed.length < 10) return true
+    return false
 }
 
 // Address type detection with strict validation
@@ -28,6 +46,13 @@ function detectAddressType(address) {
 
 // Detect EVM chain by trying GoPlus API for each supported chain
 async function detectEVMChain(address) {
+    // Check well-known tokens first
+    const lowerAddress = address.toLowerCase()
+    if (WELL_KNOWN_TOKENS[lowerAddress]) {
+        const token = WELL_KNOWN_TOKENS[lowerAddress]
+        return { chainId: CHAIN_IDS.ETHEREUM, chainName: token.chain || 'Ethereum' }
+    }
+    
     const chains = [
         { id: CHAIN_IDS.ETHEREUM, name: 'Ethereum' },
         { id: CHAIN_IDS.BASE, name: 'Base' },
@@ -57,6 +82,11 @@ async function detectEVMChain(address) {
         }
     }
     
+    // Default to Ethereum if address format is valid
+    if (address.startsWith('0x') && address.length === 42) {
+        return { chainId: CHAIN_IDS.ETHEREUM, chainName: 'Ethereum' }
+    }
+    
     return null
 }
 
@@ -82,7 +112,57 @@ async function fetchGoPlusData(address, chainId) {
     }
 }
 
-// Fetch explorer data for specific chain
+// Fetch Dexscreener data for liquidity and holders
+async function fetchDexscreenerData(address, chainName) {
+    try {
+        // Map chain names to Dexscreener chain identifiers
+        const chainMap = {
+            'Ethereum': 'ethereum',
+            'Base': 'base',
+            'Arbitrum': 'arbitrum',
+            'BSC': 'bsc',
+        }
+        
+        const chainId = chainMap[chainName] || 'ethereum'
+        const response = await fetch(
+            `https://api.dexscreener.com/latest/dex/tokens/${address}`,
+            {
+                headers: { 'Accept': 'application/json' },
+            },
+        )
+
+        if (!response.ok) {
+            throw new Error(`Dexscreener API error: ${response.status}`)
+        }
+
+        const data = await response.json()
+        
+        if (data.pairs && data.pairs.length > 0) {
+            // Find the pair with highest liquidity
+            const sortedPairs = data.pairs
+                .filter(p => p.chainId === chainId)
+                .sort((a, b) => (parseFloat(b.liquidity?.usd || 0)) - (parseFloat(a.liquidity?.usd || 0)))
+            
+            if (sortedPairs.length > 0) {
+                const topPair = sortedPairs[0]
+                return {
+                    liquidityUsd: parseFloat(topPair.liquidity?.usd || 0),
+                    volume24h: parseFloat(topPair.volume?.h24 || 0),
+                    priceChange24h: parseFloat(topPair.priceChange?.h24 || 0),
+                    fdv: parseFloat(topPair.fdv || 0),
+                    pairCount: sortedPairs.length,
+                }
+            }
+        }
+
+        return null
+    } catch (error) {
+        console.error('Dexscreener API error:', error)
+        return null
+    }
+}
+
+// Fetch explorer data for specific chain with enhanced metadata
 async function fetchExplorerData(address, chainName) {
     try {
         let apiKey, baseUrl, explorerName
@@ -112,30 +192,64 @@ async function fetchExplorerData(address, chainName) {
                 return null
         }
         
-        const [creationResponse, tokenResponse] = await Promise.all([
+        // Fetch multiple data points in parallel
+        const [creationResponse, tokenResponse, contractResponse] = await Promise.all([
             fetch(`${baseUrl}/api?module=contract&action=getcontractcreation&contractaddresses=${address}&apikey=${apiKey}`),
             fetch(`${baseUrl}/api?module=token&action=tokeninfo&contractaddress=${address}&apikey=${apiKey}`),
+            fetch(`${baseUrl}/api?module=contract&action=getsourcecode&address=${address}&apikey=${apiKey}`),
         ])
 
+        let tokenName = null
+        let tokenSymbol = null
+        let verified = false
+        let creationTx = null
+        let creator = null
+        
+        // Check well-known tokens
+        const lowerAddress = address.toLowerCase()
+        if (WELL_KNOWN_TOKENS[lowerAddress]) {
+            const token = WELL_KNOWN_TOKENS[lowerAddress]
+            tokenName = token.name
+            tokenSymbol = token.symbol
+            verified = true
+        }
+        
+        // Parse token info
+        if (tokenResponse.ok) {
+            const tokenData = await tokenResponse.json()
+            if (tokenData.status === '1' && tokenData.result?.[0]) {
+                tokenName = tokenName || tokenData.result[0].tokenName || null
+                tokenSymbol = tokenSymbol || tokenData.result[0].symbol || null
+            }
+        }
+        
+        // Parse contract creation
         if (creationResponse.ok) {
             const creationData = await creationResponse.json()
-            let tokenName = null
-            
-            if (tokenResponse.ok) {
-                const tokenData = await tokenResponse.json()
-                if (tokenData.status === '1' && tokenData.result?.[0]) {
-                    tokenName = tokenData.result[0].tokenName || null
-                }
-            }
-            
             if (creationData.status === '1' && creationData.result?.[0]) {
-                return {
-                    chain: chainName,
-                    creationTx: creationData.result[0].txHash,
-                    creator: creationData.result[0].contractCreator,
-                    source: explorerName.toLowerCase(),
-                    tokenName,
-                }
+                creationTx = creationData.result[0].txHash
+                creator = creationData.result[0].contractCreator
+            }
+        }
+        
+        // Parse contract verification status
+        if (contractResponse.ok) {
+            const contractData = await contractResponse.json()
+            if (contractData.status === '1' && contractData.result?.[0]) {
+                // Contract is verified if source code exists and is not empty
+                verified = verified || (contractData.result[0].SourceCode && contractData.result[0].SourceCode.trim() !== '')
+            }
+        }
+        
+        if (tokenName || creationTx || verified) {
+            return {
+                chain: chainName,
+                creationTx,
+                creator,
+                source: explorerName.toLowerCase(),
+                tokenName: tokenName || 'Unknown',
+                tokenSymbol: tokenSymbol || null,
+                verified,
             }
         }
 
@@ -146,7 +260,7 @@ async function fetchExplorerData(address, chainName) {
     }
 }
 
-// Fetch Solscan data
+// Fetch Solscan data with enhanced metadata
 async function fetchSolscanData(address) {
     try {
         const response = await fetch(
@@ -172,6 +286,8 @@ async function fetchSolscanData(address) {
                 supply: data.supply || null,
                 holderCount: data.holder || data.holderCount || null,
                 verified: data.verified !== false,
+                mintAuthority: data.mintAuthority || null,
+                freezeAuthority: data.freezeAuthority || null,
             }
         }
 
@@ -182,24 +298,18 @@ async function fetchSolscanData(address) {
     }
 }
 
-// Calculate health score with strict rules
-function calculateHealthScore(goPlusData, explorerData, chainDetected) {
+// Calculate health score with improved logic
+function calculateHealthScore(goPlusData, explorerData, dexscreenerData, chainDetected) {
     let score = 100
     const explanations = []
     let hasHighRisk = false
     let hasHoneypot = false
     let hasDangerousPrivileges = false
-    let missingFields = 0
-
-    // Check if we have critical data
-    if (!goPlusData) missingFields++
-    if (!explorerData) missingFields++
-    if (!chainDetected) missingFields++
 
     if (goPlusData) {
         // HIGH RISK: Honeypot
         if (goPlusData.is_honeypot === '1') {
-            score = Math.min(score, 30)
+            score = 20
             hasHoneypot = true
             hasHighRisk = true
             explanations.push('Honeypot detected - tokens cannot be sold')
@@ -228,16 +338,27 @@ function calculateHealthScore(goPlusData, explorerData, chainDetected) {
                 ownerRisks.push('Transfers can be paused by owner')
                 hasDangerousPrivileges = true
             }
+            if (goPlusData.trading_cooldown && parseInt(goPlusData.trading_cooldown) > 0) {
+                ownerRisks.push('Trading cooldown restrictions')
+                hasDangerousPrivileges = true
+            }
         }
 
-        if (hasDangerousPrivileges) {
+        if (hasDangerousPrivileges && !hasHoneypot) {
             score = Math.min(score, 40)
             hasHighRisk = true
             explanations.push(...ownerRisks.slice(0, 3))
         }
 
         // Liquidity checks
-        if (goPlusData.lp_holder_count !== undefined) {
+        if (dexscreenerData) {
+            if (dexscreenerData.liquidityUsd < 10000) {
+                score -= 15
+                explanations.push('Low liquidity detected')
+            } else if (dexscreenerData.liquidityUsd > 100000) {
+                explanations.push('Good liquidity available')
+            }
+        } else if (goPlusData.lp_holder_count !== undefined) {
             const lpCount = parseInt(goPlusData.lp_holder_count) || 0
             if (lpCount === 0) {
                 score -= 20
@@ -246,41 +367,51 @@ function calculateHealthScore(goPlusData, explorerData, chainDetected) {
                 score -= 20
                 explanations.push('Liquidity is not locked (single holder)')
             }
-        } else {
-            missingFields++
         }
     }
 
     // Contract verification
-    if (explorerData) {
+    if (explorerData?.verified) {
         explanations.push(`Contract is verified on ${explorerData.chain}`)
     } else {
         score -= 10
-        missingFields++
         explanations.push('Contract verification status unknown')
     }
 
-    // Missing critical fields penalty
-    if (missingFields >= 2) {
-        score = Math.min(score, 70)
+    // Token age (if we have creation data, assume older = safer)
+    if (explorerData?.creationTx) {
+        explanations.push('Token creation transaction available')
+    } else {
+        score -= 5
+    }
+
+    // Holder count
+    if (goPlusData?.holder_count) {
+        const holderCount = parseInt(goPlusData.holder_count)
+        if (holderCount > 1000) {
+            explanations.push('Good holder distribution')
+        } else if (holderCount < 100) {
+            score -= 10
+            explanations.push('Limited holder count')
+        }
     }
 
     // Ensure score is within bounds
-    score = Math.max(0, Math.min(100, score))
+    score = Math.max(0, Math.min(95, score)) // Never 100% safe
 
     // Determine risk level
     let riskLevel = 'LOW'
     let riskEmoji = '✅'
     
-    if (hasHighRisk || score <= 49) {
+    if (hasHighRisk || score <= 40) {
         riskLevel = 'HIGH'
         riskEmoji = '🚨'
-    } else if (score <= 79 || missingFields >= 2) {
+    } else if (score <= 79) {
         riskLevel = 'MEDIUM'
         riskEmoji = '⚠️'
     } else {
         // Only LOW if ALL conditions met
-        if (!chainDetected || !goPlusData || !explorerData || hasHoneypot || hasDangerousPrivileges || missingFields > 0) {
+        if (!chainDetected || !goPlusData || !explorerData || hasHoneypot || hasDangerousPrivileges) {
             riskLevel = 'MEDIUM'
             riskEmoji = '⚠️'
             score = Math.min(score, 79)
@@ -290,17 +421,19 @@ function calculateHealthScore(goPlusData, explorerData, chainDetected) {
     return { score, riskLevel, riskEmoji, explanations: explanations.slice(0, 5) }
 }
 
-// Generate Solana report (ALWAYS MEDIUM risk, score ≤70)
+// Generate Solana report
 function generateSolanaReport(address, solscanData, isPreBuyQuery = false) {
-    let report = '🩺 **TokenHealth Report**\n\n'
+    let report = '🩺 TokenHealth Report\n\n'
     
-    const tokenName = solscanData?.tokenName || solscanData?.tokenSymbol || 'Unknown'
+    const tokenName = solscanData?.tokenName || 'Unknown'
+    const tokenSymbol = solscanData?.tokenSymbol || ''
     const chain = 'Solana'
-    report += `**Token:** ${tokenName}\n`
-    report += `**Chain:** ${chain}\n`
-    report += `**Address:** \`${address}\`\n\n`
+    
+    report += `Token: ${tokenName}${tokenSymbol ? ` (${tokenSymbol})` : ''}\n`
+    report += `Chain: ${chain}\n`
+    report += `Address: ${address}\n\n`
 
-    // Solana ALWAYS has score ≤70 and MEDIUM risk
+    // Solana scoring
     let score = 70
     const explanations = []
 
@@ -310,6 +443,16 @@ function generateSolanaReport(address, solscanData, isPreBuyQuery = false) {
         } else {
             score -= 10
             explanations.push('Token verification status unknown')
+        }
+
+        if (solscanData.mintAuthority) {
+            score -= 15
+            explanations.push('Mint authority is active')
+        }
+
+        if (solscanData.freezeAuthority) {
+            score -= 10
+            explanations.push('Freeze authority is active')
         }
 
         if (solscanData.holderCount) {
@@ -338,38 +481,42 @@ function generateSolanaReport(address, solscanData, isPreBuyQuery = false) {
     score = Math.min(score, 70)
 
     // Health Score
-    const scoreEmoji = '🟡'
-    report += `**Health Score:** ${score} / 100 ${scoreEmoji}\n`
-    report += `**Risk Level:** ⚠️ **MEDIUM**\n\n`
+    report += `Health Score: ${score} / 100\n`
+    report += `Risk Level: MEDIUM\n\n`
 
-    // Solana-specific fields (always show limitations)
-    report += `**Honeypot Risk:** ⚠️ Not supported on Solana\n`
-    report += `**Owner Privileges:** ⚠️ Not supported on Solana\n`
+    // Fields
+    report += `Honeypot Risk: ⚠️ Not supported on Solana\n`
     
-    if (solscanData?.verified !== undefined) {
-        report += `**Contract Verified:** ${solscanData.verified ? '✅ Yes' : '⚠️ Unknown'} (Solscan)\n`
+    if (solscanData?.mintAuthority || solscanData?.freezeAuthority) {
+        report += `Owner Privileges: ⚠️ Mint/Freeze authority active\n`
     } else {
-        report += `**Contract Verified:** ⚠️ Unable to verify\n`
+        report += `Owner Privileges: ✅ No active authorities\n`
+    }
+    
+    if (solscanData?.verified) {
+        report += `Contract Verified: ✅ Yes (Solscan)\n`
+    } else {
+        report += `Contract Verified: ⚠️ Unknown\n`
     }
 
-    report += `**Token Age:** ⏳ Check on Solscan\n`
+    report += `Token Age: ⏳ Check on Solscan\n`
 
     if (solscanData?.holderCount) {
         const holderCount = typeof solscanData.holderCount === 'string' 
             ? parseInt(solscanData.holderCount) 
             : solscanData.holderCount
-        report += `**Holder Count:** ${holderCount.toLocaleString()}\n`
+        report += `Holder Count: ${holderCount.toLocaleString()}\n`
     } else {
-        report += `**Holder Count:** ⚠️ Unable to determine\n`
+        report += `Holder Count: ⚠️ Unable to determine\n`
     }
 
-    report += `**Liquidity Status:** ⚠️ Not supported on Solana\n`
+    report += `Liquidity Status: ⚠️ Not supported on Solana\n`
 
-    // Final Verdict (ALWAYS LIMITED ANALYSIS for Solana)
-    report += `\n**Verdict:** ⚠️ **LIMITED ANALYSIS** – Solana security checks are limited. Review on Solscan before interacting.\n`
+    // Final Verdict
+    report += `\nFinal Verdict: ⚠️ LIMITED ANALYSIS – Solana security checks are limited. Review on Solscan before interacting.\n`
 
     // Explanation section
-    report += `\n**Why this score?**\n`
+    report += `\nWhy this score?\n`
     if (explanations.length > 0) {
         explanations.forEach(explanation => {
             report += `• ${explanation}\n`
@@ -377,42 +524,50 @@ function generateSolanaReport(address, solscanData, isPreBuyQuery = false) {
     }
     report += `• Solana security analysis is limited compared to EVM chains\n`
 
+    // Disclaimer
+    report += `\nNot financial advice. TokenHealth provides automated risk analysis only. Always DYOR.`
+
     // Pre-buy warning if applicable
     if (isPreBuyQuery) {
-        report += `\n**Recommendation:** ⚠️ **Use caution. There are some risks here.**\n\n*This is not financial advice. Always do your own research.*`
+        report += `\n\nRecommendation: ⚠️ Use caution. There are some risks here.`
     }
 
     return report
 }
 
-// Generate EVM health report
-function generateHealthReport(address, goPlusData, explorerData, chainDetected, isPreBuyQuery = false) {
-    let report = '🩺 **TokenHealth Report**\n\n'
+// Generate EVM health report with exact format
+function generateHealthReport(address, goPlusData, explorerData, dexscreenerData, chainDetected, isPreBuyQuery = false) {
+    let report = '🩺 TokenHealth Report\n\n'
     
-    const tokenName = explorerData?.tokenName || goPlusData?.token_name || 'Unknown'
-    const chain = explorerData?.chain || (chainDetected ? 'Unknown EVM' : 'Unsupported / Unknown')
-    report += `**Token:** ${tokenName}\n`
-    report += `**Chain:** ${chain}\n`
-    report += `**Address:** \`${address}\`\n\n`
+    // Check well-known tokens
+    const lowerAddress = address.toLowerCase()
+    const wellKnown = WELL_KNOWN_TOKENS[lowerAddress]
+    
+    const tokenName = wellKnown?.name || explorerData?.tokenName || goPlusData?.token_name || 'Unknown'
+    const tokenSymbol = wellKnown?.symbol || explorerData?.tokenSymbol || goPlusData?.token_symbol || ''
+    const chain = wellKnown?.chain || explorerData?.chain || (chainDetected ? 'Ethereum' : 'Unknown')
+    
+    report += `Token: ${tokenName}${tokenSymbol ? ` (${tokenSymbol})` : ''}\n`
+    report += `Chain: ${chain}\n`
+    report += `Address: ${address}\n\n`
 
     // Calculate health score
-    const { score, riskLevel, riskEmoji, explanations } = calculateHealthScore(goPlusData, explorerData, chainDetected)
+    const { score, riskLevel, riskEmoji, explanations } = calculateHealthScore(goPlusData, explorerData, dexscreenerData, chainDetected)
     
     // Health Score
-    let scoreEmoji = '🟢'
-    if (score < 50) scoreEmoji = '🔴'
-    else if (score < 80) scoreEmoji = '🟡'
-    
-    report += `**Health Score:** ${score} / 100 ${scoreEmoji}\n`
-    report += `**Risk Level:** ${riskEmoji} **${riskLevel}**\n\n`
+    report += `Health Score: ${score} / 100\n`
+    report += `Risk Level: ${riskLevel}\n\n`
 
-    // Fields
+    // Fields with exact format
     // Honeypot Risk
     if (goPlusData) {
-        const honeypotStatus = goPlusData.is_honeypot === '1' ? '🚨 YES - High Risk' : '✅ No'
-        report += `**Honeypot Risk:** ${honeypotStatus}\n`
+        if (goPlusData.is_honeypot === '1') {
+            report += `Honeypot Risk: ❌\n`
+        } else {
+            report += `Honeypot Risk: ✅\n`
+        }
     } else {
-        report += `**Honeypot Risk:** ⚠️ Unable to verify\n`
+        report += `Honeypot Risk: ⚠️\n`
     }
 
     // Owner Privileges
@@ -425,65 +580,74 @@ function generateHealthReport(address, goPlusData, explorerData, chainDetected, 
             if (goPlusData.selfdestruct === '1') ownerRisks.push('Self-destruct')
             if (goPlusData.transfer_pausable === '1') ownerRisks.push('Transfer pausable')
             if (goPlusData.is_mintable === '1') ownerRisks.push('Mintable')
+            if (goPlusData.trading_cooldown && parseInt(goPlusData.trading_cooldown) > 0) ownerRisks.push('Trading cooldown')
         }
         
         if (ownerRisks.length > 0) {
-            report += `**Owner Privileges:** ⚠️ ${ownerRisks.slice(0, 3).join(', ')}\n`
+            report += `Owner Privileges: ⚠️\n`
         } else {
-            report += `**Owner Privileges:** ✅ No dangerous functions detected\n`
+            report += `Owner Privileges: ✅\n`
         }
     } else {
-        report += `**Owner Privileges:** ⚠️ Unable to verify\n`
+        report += `Owner Privileges: ⚠️\n`
     }
 
     // Liquidity Status
-    if (goPlusData?.lp_holder_count !== undefined) {
-        const lpCount = parseInt(goPlusData.lp_holder_count) || 0
-        if (lpCount === 0) {
-            report += `**Liquidity Status:** ⚠️ No liquidity pool detected\n`
-        } else if (lpCount === 1) {
-            report += `**Liquidity Status:** ⚠️ Unlocked (single holder)\n`
+    if (dexscreenerData) {
+        if (dexscreenerData.liquidityUsd > 100000) {
+            report += `Liquidity Status: ✅\n`
+        } else if (dexscreenerData.liquidityUsd > 10000) {
+            report += `Liquidity Status: ⚠️\n`
         } else {
-            report += `**Liquidity Status:** ✅ Multiple holders\n`
+            report += `Liquidity Status: ❌\n`
+        }
+    } else if (goPlusData?.lp_holder_count !== undefined) {
+        const lpCount = parseInt(goPlusData.lp_holder_count) || 0
+        if (lpCount > 1) {
+            report += `Liquidity Status: ✅\n`
+        } else if (lpCount === 1) {
+            report += `Liquidity Status: ⚠️\n`
+        } else {
+            report += `Liquidity Status: ❌\n`
         }
     } else {
-        report += `**Liquidity Status:** ⚠️ Unable to verify\n`
+        report += `Liquidity Status: ⚠️\n`
     }
 
     // Contract Verified
-    if (explorerData) {
-        report += `**Contract Verified:** ✅ Yes (${explorerData.chain})\n`
+    if (explorerData?.verified || wellKnown) {
+        report += `Contract Verified: ✅\n`
     } else {
-        report += `**Contract Verified:** ⚠️ Unable to verify\n`
+        report += `Contract Verified: ⚠️\n`
     }
 
     // Token Age
     if (explorerData?.creationTx) {
-        report += `**Token Age:** ⏳ Check on ${explorerData.source === 'basescan' ? 'Basescan' : explorerData.source === 'arbiscan' ? 'Arbiscan' : explorerData.source === 'bscscan' ? 'BscScan' : 'Etherscan'}\n`
+        report += `Token Age: ⏳ Check on ${explorerData.source === 'basescan' ? 'Basescan' : explorerData.source === 'arbiscan' ? 'Arbiscan' : explorerData.source === 'bscscan' ? 'BscScan' : 'Etherscan'}\n`
     } else {
-        report += `**Token Age:** ⚠️ Unable to determine\n`
+        report += `Token Age: ⚠️ Unable to determine\n`
     }
 
     // Holder Count
     if (goPlusData?.holder_count) {
         const holderCount = parseInt(goPlusData.holder_count)
-        report += `**Holder Count:** ${holderCount.toLocaleString()}\n`
+        report += `Holder Count: ${holderCount.toLocaleString()}\n`
     } else {
-        report += `**Holder Count:** ⚠️ Unable to determine\n`
+        report += `Holder Count: ⚠️ Unable to determine\n`
     }
 
     // Final Verdict
-    report += `\n**Verdict:** `
+    report += `\nFinal Verdict: `
     
-    if (!chainDetected) {
-        report += '⚠️ **INSUFFICIENT DATA** – Unable to identify chain. Proceed with caution.'
+    if (!chainDetected && !wellKnown) {
+        report += '⚠️ INSUFFICIENT DATA – Unable to identify chain. Proceed with caution.'
     } else if (riskLevel === 'HIGH') {
-        report += '🚨 **HIGH RISK** – Serious security issues detected.'
+        report += '🚨 HIGH RISK – Serious security issues detected.'
     } else if (riskLevel === 'MEDIUM') {
         if (!goPlusData || !explorerData) {
-            report += '⚠️ **DATA UNAVAILABLE** – Unable to fetch security data. Try again later.'
+            report += '⚠️ DATA UNAVAILABLE – Temporary data unavailable. Try again later.'
         } else {
-            report += '⚠️ **USE CAUTION** – Review risks before interacting.'
+            report += '⚠️ USE CAUTION – Review risks before interacting.'
         }
     } else {
         // Only LOW if ALL conditions met
@@ -493,14 +657,14 @@ function generateHealthReport(address, goPlusData, explorerData, chainDetected, 
              (goPlusData.can_take_back_ownership !== '1' && goPlusData.is_blacklisted !== '1' && 
               goPlusData.selfdestruct !== '1' && goPlusData.is_mintable !== '1' && 
               goPlusData.transfer_pausable !== '1'))) {
-            report += '✅ **SAFE** – No major risks detected, but always DYOR.'
+            report += '✅ SAFE – No major risks detected, but always DYOR.'
         } else {
-            report += '⚠️ **USE CAUTION** – Review risks before interacting.'
+            report += '⚠️ USE CAUTION – Review risks before interacting.'
         }
     }
 
     // Explanation section
-    report += `\n\n**Why this score?**\n`
+    report += `\n\nWhy this score?\n`
     if (explanations.length > 0) {
         explanations.forEach(explanation => {
             report += `• ${explanation}\n`
@@ -509,17 +673,19 @@ function generateHealthReport(address, goPlusData, explorerData, chainDetected, 
         report += `• No major risks detected\n`
     }
 
+    // Disclaimer
+    report += `\nNot financial advice. TokenHealth provides automated risk analysis only. Always DYOR.`
+
     // Pre-buy warning if applicable
     if (isPreBuyQuery) {
-        report += `\n**Recommendation:** `
+        report += `\n\nRecommendation: `
         if (riskLevel === 'HIGH') {
-            report += '🚨 **Strongly avoid. High risk of loss.**'
+            report += '🚨 Strongly avoid. High risk of loss.'
         } else if (riskLevel === 'MEDIUM') {
-            report += '⚠️ **Use caution. There are some risks here.**'
+            report += '⚠️ Use caution. There are some risks here.'
         } else {
-            report += '✅ **Looks relatively safe, but always do your own research.**'
+            report += '✅ Looks relatively safe, but always do your own research.'
         }
-        report += `\n\n*This is not financial advice. Always do your own research.*`
     }
 
     return report
@@ -556,6 +722,7 @@ bot.onSlashCommand('help', async (handler, { channelId }) => {
             '**Data sources:**\n' +
             '- GoPlus Security API\n' +
             '- Etherscan / Basescan / Arbiscan / BscScan\n' +
+            '- Dexscreener (liquidity & trading data)\n' +
             '- Solscan (Solana)\n\n' +
             '**Important:**\n' +
             '- This bot is **read-only** and **non-custodial**\n' +
@@ -584,6 +751,7 @@ function isSafetyQuery(message) {
         'thinking of aping',
         'is this a good buy',
         'should i invest',
+        'health check',
     ]
     return triggers.some(trigger => lowerMessage.includes(trigger))
 }
@@ -650,21 +818,23 @@ async function analyzeToken(handler, channelId, address, addressType, isPreBuy =
             
             if (!chainInfo) {
                 // Chain not detected - return INSUFFICIENT DATA report
-                const report = generateHealthReport(address, null, null, false, isPreBuy)
+                const report = generateHealthReport(address, null, null, null, false, isPreBuy)
                 await handler.sendMessage(channelId, report)
                 return
             }
             
             // Fetch data for detected chain
-            const [goPlusData, explorerData] = await Promise.allSettled([
+            const [goPlusData, explorerData, dexscreenerData] = await Promise.allSettled([
                 fetchGoPlusData(address, chainInfo.chainId),
                 fetchExplorerData(address, chainInfo.chainName),
+                fetchDexscreenerData(address, chainInfo.chainName),
             ])
 
             const report = generateHealthReport(
                 address,
                 goPlusData.status === 'fulfilled' ? goPlusData.value : null,
                 explorerData.status === 'fulfilled' ? explorerData.value : null,
+                dexscreenerData.status === 'fulfilled' ? dexscreenerData.value : null,
                 true, // chainDetected
                 isPreBuy,
             )
@@ -696,7 +866,21 @@ bot.onSlashCommand('health', async (handler, { channelId, args }) => {
             channelId,
             '❌ Please provide a token or contract address.\n\n**Usage:** `/health <address>`\n**Examples:**\n' +
             '• `/health 0x1234...5678` (Ethereum/Base/Arbitrum/BSC)\n' +
-            '• `/health <solana_address>` (Solana)',
+            '• `/health <solana_address>` (Solana)\n\n' +
+            '**Note:** I need a contract or mint address, not a ticker symbol like $ETH or $TOWNS.',
+        )
+        return
+    }
+
+    // Reject ticker symbols
+    if (isTickerSymbol(address)) {
+        await handler.sendMessage(
+            channelId,
+            '❌ Please provide a contract or mint address, not a ticker symbol.\n\n' +
+            '**Examples:**\n' +
+            '• `/health 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2` (WETH address)\n' +
+            '• `/health <solana_mint_address>` (Solana)\n\n' +
+            'I need the actual blockchain address to analyze the token.',
         )
         return
     }
@@ -747,7 +931,8 @@ bot.onMessage(async (handler, { message, channelId, isMentioned }) => {
             'Please include a valid token or contract address so I can scan it.\n\n' +
                 '**Examples:**\n' +
                 '• "@TokenHealth is this token safe? 0x1234...5678"\n' +
-                '• "@TokenHealth scan this contract <address>"',
+                '• "@TokenHealth scan this contract <address>"\n\n' +
+                '**Note:** I need a contract or mint address, not a ticker symbol like $ETH or $TOWNS.',
         )
         return
     }
@@ -758,7 +943,8 @@ bot.onMessage(async (handler, { message, channelId, isMentioned }) => {
         'Hi! I\'m TokenHealth, your token safety scanner. Use `/health <address>` or mention me with an address to scan a token.\n\n' +
             '**Examples:**\n' +
             '• `/health 0x1234...5678`\n' +
-            '• "@TokenHealth is this token safe? 0x1234...5678"',
+            '• "@TokenHealth is this token safe? 0x1234...5678"\n\n' +
+            '**Note:** I need a contract or mint address, not a ticker symbol.',
     )
 })
 
