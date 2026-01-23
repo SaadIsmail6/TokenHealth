@@ -869,6 +869,7 @@ function generateHealthReport(address, goPlusData, explorerData, dexscreenerData
     }
 
     report += `\nNot financial advice. TokenHealth provides automated risk analysis only. Always DYOR.\n`
+    report += `TokenHealth provides information only and does not facilitate trading or gambling.`
 
     if (isPreBuyQuery) {
         report += `\n\nRecommendation: `
