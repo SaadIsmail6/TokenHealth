@@ -560,8 +560,7 @@ bot.onSlashCommand('help', async (handler, { channelId }) => {
             '**Important:**\n' +
             '- This bot is **read-only** and **non-custodial**\n' +
             '- Results are **informational only**, not financial advice\n' +
-            '- Always do your own research (DYOR)\n\n' +
-            '*Built for safety. Built for Towns.*',
+            '- Always do your own research (DYOR)',
     )
 })
 
