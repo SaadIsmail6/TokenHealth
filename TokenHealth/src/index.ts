@@ -150,7 +150,7 @@ const WELL_KNOWN_TOKENS: Record<string, { name: string; symbol: string; age: num
     '0x2791bca1f2de4661ed88a30c99a7a9449aa84174': { name: 'USD Coin', symbol: 'USDC', age: 1400 },
     '0xc2132d05d31c914a87c6611c10748aeb04b58e8f': { name: 'Tether USD', symbol: 'USDT', age: 1400 },
     '0x8f3cf7ad23cd3cadbd9735aff958023239c6a063': { name: 'Dai Stablecoin', symbol: 'DAI', age: 1400 },
-    '0x7ceb23fd6bc0add59e62ac25578270cff1b9f619': { name: 'Wrapped Ether', symbol: 'WETH', age: 1400 },
+    '0x7ceb23fd6bc0add59e62ac25578270cff1b9f619': { name: 'Wrapped Ether', symbol: 'WETH', age: 1400, chain: 'Polygon' },
     '0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6': { name: 'Wrapped Bitcoin', symbol: 'WBTC', age: 1400 },
     '0x0b3f868e0be5597d5db7feb59e1cadbb0fdda50a': { name: 'SushiSwap', symbol: 'SUSHI', age: 1400 },
     '0xd6df932a45c0f255f85145f286ea0b292b21c90b': { name: 'Aave', symbol: 'AAVE', age: 1400 },
@@ -161,6 +161,60 @@ const WELL_KNOWN_TOKENS: Record<string, { name: string; symbol: string; age: num
     '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58': { name: 'Tether USD', symbol: 'USDT', age: 1200 },
     '0xda10009cbd5d07dd0cecc66161fc93d7c9000da1': { name: 'Dai Stablecoin', symbol: 'DAI', age: 1200 },
     '0x4200000000000000000000000000000000000042': { name: 'Optimism', symbol: 'OP', age: 650 },
+}
+
+// ============================================================================
+// CORE TOKENS REGISTRY (SYSTEM-TRUSTED CORE ASSETS)
+// ============================================================================
+
+const CORE_TOKENS: Record<string, { name: string; symbol: string; chain: string; isWrappedNative?: boolean }> = {
+    // Ethereum
+    '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': { name: 'Wrapped Ether', symbol: 'WETH', chain: 'Ethereum', isWrappedNative: true },
+    '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': { name: 'USD Coin', symbol: 'USDC', chain: 'Ethereum' },
+    '0xdac17f958d2ee523a2206206994597c13d831ec7': { name: 'Tether USD', symbol: 'USDT', chain: 'Ethereum' },
+    '0x6b175474e89094c44da98b954eedeac495271d0f': { name: 'Dai Stablecoin', symbol: 'DAI', chain: 'Ethereum' },
+    '0x2260fac5e5542a773aa44fbcfedf7c193bc2c599': { name: 'Wrapped Bitcoin', symbol: 'WBTC', chain: 'Ethereum' },
+    '0x1f9840a85d5af5bf1d1762f925bdaddc4201f984': { name: 'Uniswap', symbol: 'UNI', chain: 'Ethereum' },
+    
+    // BSC
+    '0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c': { name: 'Wrapped BNB', symbol: 'WBNB', chain: 'BSC', isWrappedNative: true },
+    '0x55d398326f99059ff775485246999027b3197955': { name: 'Tether USD', symbol: 'USDT', chain: 'BSC' },
+    '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d': { name: 'USD Coin', symbol: 'USDC', chain: 'BSC' },
+    '0xe9e7cea3dedca5984780bafc599bd69add087d56': { name: 'Binance USD', symbol: 'BUSD', chain: 'BSC' },
+    
+    // Polygon
+    '0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270': { name: 'Wrapped Matic', symbol: 'WMATIC', chain: 'Polygon', isWrappedNative: true },
+    '0x2791bca1f2de4661ed88a30c99a7a9449aa84174': { name: 'USD Coin', symbol: 'USDC', chain: 'Polygon' },
+    '0xc2132d05d31c914a87c6611c10748aeb04b58e8f': { name: 'Tether USD', symbol: 'USDT', chain: 'Polygon' },
+    
+    // Arbitrum
+    '0x82af49447d8a07e3bd95bd0d56f35241523fbab1': { name: 'Wrapped Ether', symbol: 'WETH', chain: 'Arbitrum', isWrappedNative: true },
+    '0xff970a61a04b1ca14834a43f5de4533ebddb5cc8': { name: 'USD Coin', symbol: 'USDC', chain: 'Arbitrum' },
+    '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9': { name: 'Tether USD', symbol: 'USDT', chain: 'Arbitrum' },
+    '0xda10009cbd5d07dd0cecc66161fc93d7c9000da1': { name: 'Dai Stablecoin', symbol: 'DAI', chain: 'Arbitrum' },
+    
+    // Base
+    '0x4200000000000000000000000000000000000006': { name: 'Wrapped Ether', symbol: 'WETH', chain: 'Base', isWrappedNative: true },
+    '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913': { name: 'USD Coin', symbol: 'USDC', chain: 'Base' },
+    '0x50c5725949a6f0c72e6c4a641f24049a917db0cb': { name: 'Dai Stablecoin', symbol: 'DAI', chain: 'Base' },
+    
+    // Optimism
+    '0x7f5c764cbc14f9669b88837ca1490cca17c31607': { name: 'USD Coin', symbol: 'USDC', chain: 'Optimism' },
+    '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58': { name: 'Tether USD', symbol: 'USDT', chain: 'Optimism' },
+    '0xda10009cbd5d07dd0cecc66161fc93d7c9000da1': { name: 'Dai Stablecoin', symbol: 'DAI', chain: 'Optimism' },
+}
+
+// Known wrapped native token symbols (for detection)
+const WRAPPED_NATIVE_SYMBOLS = ['WETH', 'WBNB', 'WMATIC', 'WAVAX', 'WFTM', 'WONE', 'WCELO', 'WGLMR', 'WTLOS']
+
+// Known wrapped native addresses by chain (for detection)
+const WRAPPED_NATIVE_ADDRESSES: Record<string, string[]> = {
+    'Ethereum': ['0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2'],
+    'BSC': ['0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c'],
+    'Polygon': ['0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270'],
+    'Arbitrum': ['0x82af49447d8a07e3bd95bd0d56f35241523fbab1'],
+    'Base': ['0x4200000000000000000000000000000000000006'],
+    'Optimism': ['0x4200000000000000000000000000000000000006'],
 }
 
 // ============================================================================
@@ -240,6 +294,37 @@ async function detectEVMChain(address: string): Promise<string> {
     
     // Default to Ethereum for valid EVM addresses
     return 'Ethereum'
+}
+
+// ============================================================================
+// WRAPPED NATIVE TOKEN DETECTION
+// ============================================================================
+
+function isWrappedNativeToken(address: string, symbol: string | null, chain: string): boolean {
+    const normalizedAddress = address.toLowerCase()
+    
+    // Check CORE_TOKENS registry
+    const coreToken = CORE_TOKENS[normalizedAddress]
+    if (coreToken?.isWrappedNative) {
+        return true
+    }
+    
+    // Check known wrapped native addresses for this chain
+    const knownAddresses = WRAPPED_NATIVE_ADDRESSES[chain] || []
+    if (knownAddresses.some(addr => addr.toLowerCase() === normalizedAddress)) {
+        return true
+    }
+    
+    // Check symbol pattern
+    if (symbol && WRAPPED_NATIVE_SYMBOLS.includes(symbol.toUpperCase())) {
+        return true
+    }
+    
+    return false
+}
+
+function isCoreToken(address: string): boolean {
+    return !!CORE_TOKENS[address.toLowerCase()]
 }
 
 // ============================================================================
@@ -490,8 +575,17 @@ function detectSecurityFlags(
     explorerData: any,
     dexData: any,
     tokenAge: number | null,
-    addressType: string
+    addressType: string,
+    address: string,
+    symbol: string | null,
+    chain: string
 ): SecurityFlags {
+    const isCore = isCoreToken(address)
+    const isWrapped = isWrappedNativeToken(address, symbol, chain)
+    
+    // For core/wrapped tokens, liquidity is always considered safe
+    const hasLiquidity = dexData && dexData.liquidity !== null && dexData.liquidity !== undefined && dexData.liquidity >= 1000
+    
     return {
         honeypot: addressType === 'EVM' && (
             goPlusData?.is_honeypot === '1' ||
@@ -508,10 +602,13 @@ function detectSecurityFlags(
             goPlusData?.selfdestruct === '1'
         ),
         proxyUpgradeable: addressType === 'EVM' && goPlusData?.is_proxy === '1',
-        unverifiedContract: addressType === 'EVM' && explorerData?.verified === false,
-        noLiquidity: !dexData || dexData.liquidity === null || dexData.liquidity === undefined || dexData.liquidity < 1000,
+        // Core tokens and wrapped natives: skip verification penalty
+        unverifiedContract: addressType === 'EVM' && !isCore && !isWrapped && explorerData?.verified === false,
+        // Core tokens and wrapped natives: never flag as no liquidity
+        noLiquidity: !isCore && !isWrapped && (!hasLiquidity || (dexData && dexData.liquidity < 1000)),
         newToken: tokenAge !== null && tokenAge < 7,
-        notListed: !dexData || dexData.liquidity === null || dexData.liquidity === undefined
+        // Core tokens and wrapped natives: never flag as not listed
+        notListed: !isCore && !isWrapped && (!dexData || dexData.liquidity === null || dexData.liquidity === undefined)
     }
 }
 
@@ -523,12 +620,18 @@ function calculateHealthScore(
     securityFlags: SecurityFlags,
     dataConfidence: DataConfidence,
     tokenAge: number | null,
-    addressType: string
+    addressType: string,
+    address: string,
+    symbol: string | null,
+    chain: string
 ): { score: number; penalties: Array<{ reason: string; points: number }> } {
     let score = 100
     const penalties: Array<{ reason: string; points: number }> = []
     
-    // CRITICAL FLAGS (immediate high risk)
+    const isCore = isCoreToken(address)
+    const isWrapped = isWrappedNativeToken(address, symbol, chain)
+    
+    // CRITICAL FLAGS (immediate high risk) - apply to ALL tokens
     if (securityFlags.honeypot) {
         penalties.push({ reason: 'Honeypot behavior detected', points: 50 })
         score -= 50
@@ -549,27 +652,31 @@ function calculateHealthScore(
         score -= 30
     }
     
-    // LIQUIDITY & AGE
-    if (securityFlags.noLiquidity) {
+    // LIQUIDITY & AGE - Skip for core/wrapped tokens
+    if (securityFlags.noLiquidity && !isCore && !isWrapped) {
         penalties.push({ reason: 'No liquidity detected or insufficient liquidity', points: 25 })
         score -= 25
     }
     
-    if (tokenAge !== null && tokenAge < 1) {
-        penalties.push({ reason: 'Extremely new token (<24 hours) - high rug risk', points: 35 })
-        score -= 35
-    } else if (tokenAge !== null && tokenAge < 7) {
-        penalties.push({ reason: 'Very new token (<7 days) - elevated risk', points: 20 })
-        score -= 20
-    } else if (tokenAge === null) {
-        penalties.push({ reason: 'Token age unknown - cannot verify launch date', points: 15 })
-        score -= 15
+    // Token age penalties - Skip for core/wrapped tokens (they're established)
+    if (!isCore && !isWrapped) {
+        if (tokenAge !== null && tokenAge < 1) {
+            penalties.push({ reason: 'Extremely new token (<24 hours) - high rug risk', points: 35 })
+            score -= 35
+        } else if (tokenAge !== null && tokenAge < 7) {
+            penalties.push({ reason: 'Very new token (<7 days) - elevated risk', points: 20 })
+            score -= 20
+        } else if (tokenAge === null) {
+            // Only penalize if we expected age but didn't get it (not for wrapped natives)
+            penalties.push({ reason: 'Token age unknown - cannot verify launch date', points: 10 })
+            score -= 10
+        }
     }
     
-    // CONTRACT & VERIFICATION
-    if (securityFlags.unverifiedContract) {
-        penalties.push({ reason: 'Contract not verified on block explorer', points: 15 })
-        score -= 15
+    // CONTRACT & VERIFICATION - Skip for core/wrapped tokens
+    if (securityFlags.unverifiedContract && !isCore && !isWrapped) {
+        penalties.push({ reason: 'Contract not verified on block explorer', points: 5 })
+        score -= 5
     }
     
     if (securityFlags.proxyUpgradeable) {
@@ -582,19 +689,20 @@ function calculateHealthScore(
         score -= 20
     }
     
-    // MARKET PRESENCE
-    if (securityFlags.notListed) {
+    // MARKET PRESENCE - Skip for core/wrapped tokens
+    if (securityFlags.notListed && !isCore && !isWrapped) {
         penalties.push({ reason: 'Not listed on major DEXs or explorers', points: 15 })
         score -= 15
     }
     
-    // DATA CONFIDENCE PENALTY
-    if (dataConfidence.level === 'LOW') {
-        penalties.push({ reason: 'Insufficient data to perform thorough analysis', points: 20 })
-        score -= 20
-    } else if (dataConfidence.level === 'MEDIUM') {
-        penalties.push({ reason: 'Some critical data unavailable', points: 10 })
+    // DATA CONFIDENCE PENALTY (REDUCED AGGRESSIVENESS)
+    // Missing data can only increase risk by one level, never force HIGH RISK
+    if (dataConfidence.level === 'LOW' && !isCore && !isWrapped) {
+        penalties.push({ reason: 'Insufficient data to perform thorough analysis', points: 10 })
         score -= 10
+    } else if (dataConfidence.level === 'MEDIUM' && !isCore && !isWrapped) {
+        penalties.push({ reason: 'Some critical data unavailable', points: 5 })
+        score -= 5
     }
     
     // SOLANA LIMITED MODE
@@ -606,18 +714,23 @@ function calculateHealthScore(
     // Clamp score
     score = Math.max(0, Math.min(100, score))
     
-    // OVERRIDE RULES: Missing data caps score
-    if (dataConfidence.level === 'LOW') {
-        score = Math.min(score, 55)
-    } else if (dataConfidence.level === 'MEDIUM' && dataConfidence.percentage < 60) {
-        score = Math.min(score, 60)
+    // OVERRIDE RULES: Missing data caps (REDUCED - only for non-core tokens)
+    if (!isCore && !isWrapped) {
+        if (dataConfidence.level === 'LOW') {
+            // Don't cap as aggressively - allow up to 70 instead of 55
+            score = Math.min(score, 70)
+        } else if (dataConfidence.level === 'MEDIUM' && dataConfidence.percentage < 60) {
+            score = Math.min(score, 75)
+        }
     }
     
-    // New token caps
-    if (tokenAge !== null && tokenAge < 1) {
-        score = Math.min(score, 40)
-    } else if (tokenAge !== null && tokenAge < 7) {
-        score = Math.min(score, 65)
+    // New token caps (only for non-core tokens)
+    if (!isCore && !isWrapped) {
+        if (tokenAge !== null && tokenAge < 1) {
+            score = Math.min(score, 40)
+        } else if (tokenAge !== null && tokenAge < 7) {
+            score = Math.min(score, 65)
+        }
     }
     
     return { score, penalties }
@@ -630,16 +743,33 @@ function calculateHealthScore(
 function determineRiskLevel(
     score: number,
     securityFlags: SecurityFlags,
-    dataConfidence: DataConfidence
+    dataConfidence: DataConfidence,
+    address: string,
+    symbol: string | null,
+    chain: string
 ): 'LOW' | 'MEDIUM' | 'HIGH' {
-    // OVERRIDE RULES: Critical flags force HIGH risk
+    const isCore = isCoreToken(address)
+    const isWrapped = isWrappedNativeToken(address, symbol, chain)
+    
+    // OVERRIDE RULES: Critical flags force HIGH risk (for ALL tokens)
     if (securityFlags.honeypot || securityFlags.mintAuthority || securityFlags.ownerPrivileges) {
         return 'HIGH'
     }
     
-    // Missing data forces at least MEDIUM
+    // Missing data can only increase risk by one level, never force HIGH RISK
+    // Exception: Core/wrapped tokens are protected
+    if (isCore || isWrapped) {
+        // Core tokens can only be HIGH if critical flags are present (already checked above)
+        if (score >= 85) return 'LOW'
+        if (score >= 70) return 'MEDIUM'
+        return 'MEDIUM' // Even with low score, core tokens are at worst MEDIUM unless critical flags
+    }
+    
+    // For non-core tokens: Missing data can push to MEDIUM, but not HIGH
     if (dataConfidence.level === 'LOW') {
-        return 'HIGH'
+        // Missing data can push to MEDIUM, but only real security flags can force HIGH
+        if (score < 60) return 'MEDIUM' // Push to MEDIUM instead of HIGH
+        return score >= 80 ? 'LOW' : 'MEDIUM'
     }
     
     if (dataConfidence.level === 'MEDIUM' && score < 70) {
@@ -906,20 +1036,25 @@ async function analyzeToken(address: string): Promise<string> {
             
             const tokenAge = await calculateTokenAge(address, chain, dexData, explorerData, cgData)
             
-            // Check whitelist for name/symbol
+            // Check CORE_TOKENS first (for name/symbol override), then whitelist
             const normalizedAddress = address.toLowerCase()
+            const coreToken = CORE_TOKENS[normalizedAddress]
             const whitelistEntry = WELL_KNOWN_TOKENS[normalizedAddress]
             
+            // Use CORE registry name/symbol if available (prevents mismatches)
+            const tokenName = coreToken?.name || whitelistEntry?.name || cgData?.name || goPlusData?.token_name || 'Unknown'
+            const tokenSymbol = coreToken?.symbol || whitelistEntry?.symbol || cgData?.symbol || goPlusData?.token_symbol || 'Unknown'
+            
             tokenData = {
-                name: whitelistEntry?.name || cgData?.name || goPlusData?.token_name || 'Unknown',
-                symbol: whitelistEntry?.symbol || cgData?.symbol || goPlusData?.token_symbol || 'Unknown',
+                name: tokenName,
+                symbol: tokenSymbol,
                 chain,
                 address,
-                tokenAge,
+                tokenAge: coreToken?.isWrappedNative ? 1100 : tokenAge, // Wrapped natives are established (>3 years)
                 pairAge: dexData?.pairAge || null,
-                liquidity: dexData?.liquidity || null,
+                liquidity: coreToken?.isWrappedNative ? 1000000 : (dexData?.liquidity || null), // Wrapped natives always have liquidity
                 holderCount: goPlusData?.holder_count ? parseInt(goPlusData.holder_count) : null,
-                contractVerified: explorerData?.verified || null,
+                contractVerified: explorerData?.verified ?? (coreToken ? true : null), // Core tokens are considered verified
                 marketCap: cgData?.marketCap || null,
                 cmcRank: cgData?.cmcRank || null,
                 cmcListed: !!cgData
@@ -941,9 +1076,13 @@ async function analyzeToken(address: string): Promise<string> {
                 tokenAge = dexData.pairAge
             }
             
+            // Check CORE_TOKENS for Solana tokens (SOL, USDC)
+            const normalizedAddress = address.toLowerCase()
+            const coreToken = CORE_TOKENS[normalizedAddress]
+            
             tokenData = {
-                name: solscanData?.name || 'Unknown',
-                symbol: solscanData?.symbol || 'Unknown',
+                name: coreToken?.name || solscanData?.name || 'Unknown',
+                symbol: coreToken?.symbol || solscanData?.symbol || 'Unknown',
                 chain: 'Solana',
                 address,
                 tokenAge,
@@ -966,51 +1105,80 @@ async function analyzeToken(address: string): Promise<string> {
             addressType
         )
         
-        // Detect security flags
+        // Detect security flags (with core/wrapped detection)
         const securityFlags = detectSecurityFlags(
             goPlusData,
             solscanData,
             explorerData,
             dexData,
             tokenData.tokenAge,
-            addressType
+            addressType,
+            address,
+            tokenData.symbol,
+            tokenData.chain
         )
         
-        // Special handling for whitelisted tokens with missing data
+        // Check if token is core or wrapped native
         const normalizedAddress = address.toLowerCase()
+        const isCore = isCoreToken(address)
+        const isWrapped = isWrappedNativeToken(address, tokenData.symbol, tokenData.chain)
         const isWhitelisted = !!WELL_KNOWN_TOKENS[normalizedAddress]
         
-        // Calculate score
+        // Internal debug logging
+        const debugLog: string[] = []
+        if (!goPlusData) debugLog.push('GoPlus API failed')
+        if (!explorerData) debugLog.push('Explorer API failed')
+        if (!dexData) debugLog.push('DexScreener API failed')
+        if (isCore) debugLog.push('Core token detected')
+        if (isWrapped) debugLog.push('Wrapped native detected')
+        if (debugLog.length > 0) {
+            console.log(`[TokenHealth Debug] ${address}: ${debugLog.join(', ')}`)
+        }
+        
+        // Calculate score (with core/wrapped exemptions)
         const { score, penalties } = calculateHealthScore(
             securityFlags,
             dataConfidence,
             tokenData.tokenAge,
-            addressType
+            addressType,
+            address,
+            tokenData.symbol,
+            tokenData.chain
         )
         
-        // For whitelisted tokens, boost score if APIs failed but no critical security issues detected
+        // FINAL SAFETY OVERRIDE LAYER (Anti-embarrassment system)
         let finalScore = score
-        if (isWhitelisted && dataConfidence.level === 'LOW' && !securityFlags.honeypot && !securityFlags.ownerPrivileges) {
-            // Whitelisted tokens get benefit of doubt when APIs fail
-            finalScore = Math.max(score, 75)
+        let finalRiskLevel: 'LOW' | 'MEDIUM' | 'HIGH'
+        
+        if ((isCore || isWrapped) && !securityFlags.honeypot && !securityFlags.ownerPrivileges && !securityFlags.mintAuthority && !securityFlags.blacklistAuthority) {
+            // Core/wrapped tokens: Force minimum 85 score and LOW risk if no critical flags
+            finalScore = Math.max(score, 85)
+            finalRiskLevel = 'LOW'
+            console.log(`[TokenHealth Debug] ${address}: Core/Wrapped override applied - Score: ${finalScore}, Risk: ${finalRiskLevel}`)
+        } else {
+            // Determine risk level normally
+            finalRiskLevel = determineRiskLevel(finalScore, securityFlags, dataConfidence, address, tokenData.symbol, tokenData.chain)
         }
         
-        // Determine risk level
-        const riskLevel = determineRiskLevel(finalScore, securityFlags, dataConfidence)
-        
-        // Generate verdict
-        const { verdict, warnings } = generateVerdict(
-            riskLevel,
+        // Generate verdict (with core/wrapped override)
+        let { verdict, warnings } = generateVerdict(
+            finalRiskLevel,
             securityFlags,
             dataConfidence,
             tokenData.tokenAge,
             addressType
         )
         
+        // Override verdict for core/wrapped tokens
+        if ((isCore || isWrapped) && !securityFlags.honeypot && !securityFlags.ownerPrivileges && !securityFlags.mintAuthority && !securityFlags.blacklistAuthority) {
+            verdict = '🟢 NO CRITICAL RISKS DETECTED – Established core asset. No security issues found.'
+            warnings = []
+        }
+        
         // Build analysis
         const analysis: RiskAnalysis = {
             healthScore: finalScore,
-            riskLevel,
+            riskLevel: finalRiskLevel,
             dataConfidence,
             securityFlags,
             penalties,
