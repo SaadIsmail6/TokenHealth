@@ -976,6 +976,10 @@ async function analyzeToken(address: string): Promise<string> {
             addressType
         )
         
+        // Special handling for whitelisted tokens with missing data
+        const normalizedAddress = address.toLowerCase()
+        const isWhitelisted = !!WELL_KNOWN_TOKENS[normalizedAddress]
+        
         // Calculate score
         const { score, penalties } = calculateHealthScore(
             securityFlags,
@@ -984,8 +988,15 @@ async function analyzeToken(address: string): Promise<string> {
             addressType
         )
         
+        // For whitelisted tokens, boost score if APIs failed but no critical security issues detected
+        let finalScore = score
+        if (isWhitelisted && dataConfidence.level === 'LOW' && !securityFlags.honeypot && !securityFlags.ownerPrivileges) {
+            // Whitelisted tokens get benefit of doubt when APIs fail
+            finalScore = Math.max(score, 75)
+        }
+        
         // Determine risk level
-        const riskLevel = determineRiskLevel(score, securityFlags, dataConfidence)
+        const riskLevel = determineRiskLevel(finalScore, securityFlags, dataConfidence)
         
         // Generate verdict
         const { verdict, warnings } = generateVerdict(
@@ -998,7 +1009,7 @@ async function analyzeToken(address: string): Promise<string> {
         
         // Build analysis
         const analysis: RiskAnalysis = {
-            healthScore: score,
+            healthScore: finalScore,
             riskLevel,
             dataConfidence,
             securityFlags,
