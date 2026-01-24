@@ -71,6 +71,8 @@ const WELL_KNOWN_TOKENS: Record<string, { name: string; symbol: string; age: num
     // Base
     '0x4200000000000000000000000000000000000006': { name: 'Wrapped Ether', symbol: 'WETH', age: 500 },
     '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913': { name: 'USD Coin', symbol: 'USDC', age: 500 },
+    // Towns Protocol
+    '0x000000fa00b200406de700041cfc6b19bbfb4d13': { name: 'Towns', symbol: 'TOWNS', age: 180 },
 }
 
 // ============================================================================
