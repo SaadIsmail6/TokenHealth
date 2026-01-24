@@ -906,9 +906,13 @@ async function analyzeToken(address: string): Promise<string> {
             
             const tokenAge = await calculateTokenAge(address, chain, dexData, explorerData, cgData)
             
+            // Check whitelist for name/symbol
+            const normalizedAddress = address.toLowerCase()
+            const whitelistEntry = WELL_KNOWN_TOKENS[normalizedAddress]
+            
             tokenData = {
-                name: cgData?.name || goPlusData?.token_name || 'Unknown',
-                symbol: cgData?.symbol || goPlusData?.token_symbol || 'Unknown',
+                name: whitelistEntry?.name || cgData?.name || goPlusData?.token_name || 'Unknown',
+                symbol: whitelistEntry?.symbol || cgData?.symbol || goPlusData?.token_symbol || 'Unknown',
                 chain,
                 address,
                 tokenAge,
