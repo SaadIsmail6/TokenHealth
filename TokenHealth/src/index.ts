@@ -62,11 +62,11 @@ interface RiskAnalysis {
 // WELL-KNOWN TOKENS (WHITELIST)
 // ============================================================================
 
-const WELL_KNOWN_TOKENS: Record<string, { name: string; symbol: string; age: number }> = {
+const WELL_KNOWN_TOKENS: Record<string, { name: string; symbol: string; age: number; chain?: string }> = {
     // ===== ETHEREUM MAINNET =====
     // Top Stablecoins
-    '0xdac17f958d2ee523a2206206994597c13d831ec7': { name: 'Tether USD', symbol: 'USDT', age: 2800 },
-    '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': { name: 'USD Coin', symbol: 'USDC', age: 2200 },
+    '0xdac17f958d2ee523a2206206994597c13d831ec7': { name: 'Tether USD', symbol: 'USDT', age: 2800, chain: 'Ethereum' },
+    '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': { name: 'USD Coin', symbol: 'USDC', age: 2200, chain: 'Ethereum' },
     '0x6b175474e89094c44da98b954eedeac495271d0f': { name: 'Dai Stablecoin', symbol: 'DAI', age: 2400 },
     '0x4fabb145d64652a948d72533023f6e7a623c7c53': { name: 'Binance USD', symbol: 'BUSD', age: 1800 },
     '0x853d955acef822db058eb8505911ed77f175b99e': { name: 'Frax', symbol: 'FRAX', age: 1200 },
@@ -123,10 +123,10 @@ const WELL_KNOWN_TOKENS: Record<string, { name: string; symbol: string; age: num
     '0xc00e94cb662c3520282e6f5717214004a7f26888': { name: 'Render Token', symbol: 'RNDR', age: 1400 },
     
     // ===== BASE CHAIN =====
-    '0x4200000000000000000000000000000000000006': { name: 'Wrapped Ether', symbol: 'WETH', age: 520 },
-    '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913': { name: 'USD Coin', symbol: 'USDC', age: 520 },
-    '0x50c5725949a6f0c72e6c4a641f24049a917db0cb': { name: 'Dai Stablecoin', symbol: 'DAI', age: 520 },
-    '0x000000fa00b200406de700041cfc6b19bbfb4d13': { name: 'Towns', symbol: 'TOWNS', age: 180 },
+    '0x4200000000000000000000000000000000000006': { name: 'Wrapped Ether', symbol: 'WETH', age: 520, chain: 'Base' },
+    '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913': { name: 'USD Coin', symbol: 'USDC', age: 520, chain: 'Base' },
+    '0x50c5725949a6f0c72e6c4a641f24049a917db0cb': { name: 'Dai Stablecoin', symbol: 'DAI', age: 520, chain: 'Base' },
+    '0x000000fa00b200406de700041cfc6b19bbfb4d13': { name: 'Towns', symbol: 'TOWNS', age: 180, chain: 'Base' },
     
     // ===== BSC (BINANCE SMART CHAIN) =====
     '0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c': { name: 'Wrapped BNB', symbol: 'WBNB', age: 1600 },
@@ -205,6 +205,12 @@ function detectAddressType(address: string): 'EVM' | 'SOLANA' | 'UNKNOWN' {
 }
 
 async function detectEVMChain(address: string): Promise<string> {
+    // Check whitelist first - if token is whitelisted with a specific chain, use that
+    const normalizedAddress = address.toLowerCase()
+    if (WELL_KNOWN_TOKENS[normalizedAddress]?.chain) {
+        return WELL_KNOWN_TOKENS[normalizedAddress].chain!
+    }
+    
     // Try GoPlus multi-chain detection
     try {
         const chains = ['eth', 'bsc', 'base', 'arbitrum', 'polygon', 'optimism']
