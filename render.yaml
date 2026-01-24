@@ -1,24 +1,28 @@
 services:
   - type: web
-    name: tokenhealth-bot
+    name: tokenhealth
     runtime: bun
+    plan: free
     buildCommand: cd TokenHealth && bun install
     startCommand: cd TokenHealth && bun run start
     healthCheckPath: /
     envVars:
-      - key: PORT
-        generateValue: true
       - key: APP_PRIVATE_DATA
         sync: false
       - key: JWT_SECRET
         sync: false
       - key: ETHERSCAN_API_KEY
         sync: false
-        optional: true
       - key: BASESCAN_API_KEY
         sync: false
-        optional: true
+      - key: ARBISCAN_API_KEY
+        sync: false
+      - key: BSCSCAN_API_KEY
+        sync: false
+      - key: POLYGONSCAN_API_KEY
+        sync: false
       - key: SOLSCAN_API_KEY
         sync: false
-        optional: true
+      - key: PORT
+        generateValue: true
 

@@ -1,5 +1,5 @@
-// Those commands will be registered to the bot as soon as the bot is initialized
-// and will be available in the slash command autocomplete.
+import type { BotCommand } from '@towns-protocol/bot'
+
 const commands = [
     {
         name: 'help',
@@ -9,7 +9,7 @@ const commands = [
         name: 'health',
         description: 'Check the safety of a token or contract address',
     },
-]
+] as const satisfies BotCommand[]
 
 export default commands
 
