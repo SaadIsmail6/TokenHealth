@@ -967,7 +967,8 @@ TokenHealth prioritizes your safety over optimism.`
 
 // Health command
 bot.onSlashCommand('health', async (handler, event) => {
-    const query = (event.argument || '').trim()
+    // args is an array - join them to get the full address/query
+    const query = (event.args || []).join(' ').trim()
     
     if (!query) {
         await handler.sendMessage(
