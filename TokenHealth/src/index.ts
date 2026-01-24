@@ -977,24 +977,13 @@ async function analyzeToken(address: string): Promise<string> {
             addressType
         )
         
-        // TOWNS token override - ensure high score and LOW risk
+        // TOWNS token override - ensure minimum viable score
         if (isTownsToken) {
-            score = Math.max(score, 92)  // Minimum 92/100
-            // Remove certain penalties for TOWNS
-            penalties = penalties.filter(p => 
-                !p.reason.includes('new token') && 
-                !p.reason.includes('Age unknown') &&
-                !p.reason.includes('limited history')
-            )
+            score = Math.max(score, 70)  // Minimum 70/100
         }
         
         // Determine risk level
-        let riskLevel = determineRiskLevel(score, securityFlags, dataConfidence)
-        
-        // TOWNS token override - force LOW risk unless critical issues
-        if (isTownsToken && !securityFlags.honeypot) {
-            riskLevel = 'LOW'
-        }
+        const riskLevel = determineRiskLevel(score, securityFlags, dataConfidence)
         
         // Generate verdict
         const { verdict, warnings } = generateVerdict(
