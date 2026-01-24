@@ -315,7 +315,7 @@ async function calculateTokenAge(
     }
     
     // Try Dexscreener pair age
-    if (dexData?.pairAge !== null) {
+    if (dexData && dexData.pairAge !== null && dexData.pairAge !== undefined) {
         return dexData.pairAge
     }
     
@@ -403,8 +403,8 @@ function detectSecurityFlags(
             goPlusData?.sell_tax > 50 ||
             goPlusData?.cannot_sell_all === '1'
         ),
-        mintAuthority: addressType === 'SOLANA' && solscanData?.mintAuthority !== null,
-        freezeAuthority: addressType === 'SOLANA' && solscanData?.freezeAuthority !== null,
+        mintAuthority: addressType === 'SOLANA' && solscanData?.mintAuthority !== null && solscanData?.mintAuthority !== undefined,
+        freezeAuthority: addressType === 'SOLANA' && solscanData?.freezeAuthority !== null && solscanData?.freezeAuthority !== undefined,
         blacklistAuthority: addressType === 'EVM' && goPlusData?.is_blacklisted === '1',
         ownerPrivileges: addressType === 'EVM' && (
             goPlusData?.owner_change_balance === '1' ||
@@ -413,10 +413,11 @@ function detectSecurityFlags(
         ),
         proxyUpgradeable: addressType === 'EVM' && goPlusData?.is_proxy === '1',
         unverifiedContract: addressType === 'EVM' && explorerData?.verified === false,
-        noLiquidity: dexData?.liquidity === null || dexData?.liquidity < 1000,
+        noLiquidity: !dexData || dexData.liquidity === null || dexData.liquidity === undefined || dexData.liquidity < 1000,
         newToken: tokenAge !== null && tokenAge < 7,
-        notListed: !dexData || dexData.liquidity === null
+        notListed: !dexData || dexData.liquidity === null || dexData.liquidity === undefined
     }
+}
 }
 
 // ============================================================================
