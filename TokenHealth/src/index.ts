@@ -873,9 +873,6 @@ async function analyzeToken(address: string): Promise<string> {
                'Please provide a valid token contract address.'
     }
     
-    // Special handling for TOWNS token
-    const isTownsToken = address.toLowerCase() === '0x000000fa00b200406de700041cfc6b19bbfb4d13'
-    
     try {
         let tokenData: TokenData
         let goPlusData: any = null
@@ -970,17 +967,12 @@ async function analyzeToken(address: string): Promise<string> {
         )
         
         // Calculate score
-        let { score, penalties } = calculateHealthScore(
+        const { score, penalties } = calculateHealthScore(
             securityFlags,
             dataConfidence,
             tokenData.tokenAge,
             addressType
         )
-        
-        // TOWNS token override - ensure minimum viable score
-        if (isTownsToken) {
-            score = Math.max(score, 70)  // Minimum 70/100
-        }
         
         // Determine risk level
         const riskLevel = determineRiskLevel(score, securityFlags, dataConfidence)
