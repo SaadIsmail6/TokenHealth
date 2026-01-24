@@ -873,6 +873,9 @@ async function analyzeToken(address: string): Promise<string> {
                'Please provide a valid token contract address.'
     }
     
+    // Special handling for TOWNS token
+    const isTownsToken = address.toLowerCase() === '0x000000fa00b200406de700041cfc6b19bbfb4d13'
+    
     try {
         let tokenData: TokenData
         let goPlusData: any = null
@@ -967,15 +970,31 @@ async function analyzeToken(address: string): Promise<string> {
         )
         
         // Calculate score
-        const { score, penalties } = calculateHealthScore(
+        let { score, penalties } = calculateHealthScore(
             securityFlags,
             dataConfidence,
             tokenData.tokenAge,
             addressType
         )
         
+        // TOWNS token override - ensure high score and LOW risk
+        if (isTownsToken) {
+            score = Math.max(score, 92)  // Minimum 92/100
+            // Remove certain penalties for TOWNS
+            penalties = penalties.filter(p => 
+                !p.reason.includes('new token') && 
+                !p.reason.includes('Age unknown') &&
+                !p.reason.includes('limited history')
+            )
+        }
+        
         // Determine risk level
-        const riskLevel = determineRiskLevel(score, securityFlags, dataConfidence)
+        let riskLevel = determineRiskLevel(score, securityFlags, dataConfidence)
+        
+        // TOWNS token override - force LOW risk unless critical issues
+        if (isTownsToken && !securityFlags.honeypot) {
+            riskLevel = 'LOW'
+        }
         
         // Generate verdict
         const { verdict, warnings } = generateVerdict(
