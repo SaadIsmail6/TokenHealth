@@ -418,7 +418,6 @@ function detectSecurityFlags(
         notListed: !dexData || dexData.liquidity === null || dexData.liquidity === undefined
     }
 }
-}
 
 // ============================================================================
 // SCORING ENGINE (REDESIGNED)
