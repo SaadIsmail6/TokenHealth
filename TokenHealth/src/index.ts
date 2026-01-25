@@ -556,6 +556,11 @@ async function fetchDexscreenerData(address: string): Promise<any> {
                     }
                 }
                 
+                // METADATA FIX: Extract baseToken and quoteToken info for new pairs
+                // Prefer DexScreener baseToken metadata for new/unverified pairs
+                const baseToken = mainPair?.baseToken || null
+                const quoteToken = mainPair?.quoteToken || null
+                
                 return {
                     liquidity: (mainPair?.liquidity?.usd !== null && mainPair?.liquidity?.usd !== undefined) ? mainPair.liquidity.usd : null,
                     pairAge,
@@ -563,6 +568,17 @@ async function fetchDexscreenerData(address: string): Promise<any> {
                     pairCreatedAt: pairTimestamp, // Store raw timestamp for reference
                     txns24h: (mainPair?.txns?.h24 !== null && mainPair?.txns?.h24 !== undefined) ? mainPair.txns.h24 : null,
                     volume24h: (mainPair?.volume?.h24 !== null && mainPair?.volume?.h24 !== undefined) ? mainPair.volume.h24 : null,
+                    // METADATA FIX: Include baseToken and quoteToken for name/symbol extraction
+                    baseToken: baseToken ? {
+                        name: baseToken?.name || null,
+                        symbol: baseToken?.symbol || null,
+                        address: baseToken?.address || null
+                    } : null,
+                    quoteToken: quoteToken ? {
+                        name: quoteToken?.name || null,
+                        symbol: quoteToken?.symbol || null,
+                        address: quoteToken?.address || null
+                    } : null
                 }
             } catch (err) {
                 console.error('[DexScreener] Fetch error:', err)
@@ -1358,8 +1374,9 @@ function generateReport(
     let report = '🩺 TokenHealth Report\n\n'
     
     // Token Info
-    report += `Token: ${tokenData.name || 'Unknown'}\n`
-    report += `Symbol: ${tokenData.symbol || 'Unknown'}\n`
+    // METADATA FIX: Never show "Unknown" - use fallback values from tokenData
+    report += `Token: ${tokenData.name || 'New Token'}\n`
+    report += `Symbol: ${tokenData.symbol || 'NEW'}\n`
     report += `Chain: ${tokenData.chain}\n`
     report += `Address: \`${tokenData.address}\`\n\n`
     
@@ -1514,20 +1531,30 @@ async function analyzeToken(address: string): Promise<string> {
             const trustedGoPlusData = (apiAddress === normalizedAddress || !apiAddress) ? goPlusData : null
             const trustedCgData = (cgAddress === normalizedAddress || !cgAddress) ? cgData : null
             
-            // Use most trusted source (CORE > Bluechip > Whitelist > Validated API)
+            // METADATA FIX: Prioritize DexScreener baseToken metadata for new/unverified pairs
+            // If input is a PAIR address, always display the BASE token as the analyzed token
+            // Prefer DexScreener baseToken metadata for new/unverified pairs
+            const dexBaseToken = dexData?.baseToken || null
+            const dexBaseName = (dexBaseToken && dexBaseToken.name && dexBaseToken.name.trim()) ? dexBaseToken.name.trim() : null
+            const dexBaseSymbol = (dexBaseToken && dexBaseToken.symbol && dexBaseToken.symbol.trim()) ? dexBaseToken.symbol.trim() : null
+            
+            // Use most trusted source (CORE > Bluechip > Whitelist > DexScreener baseToken > Validated API > Fallback)
             const tokenName = coreToken?.name 
                 || bluechipToken?.name 
                 || whitelistEntry?.name 
-                || (trustedCgData?.name && trustedCgData.name !== 'Unknown' ? trustedCgData.name : null)
-                || (trustedGoPlusData?.token_name && trustedGoPlusData.token_name !== 'Unknown' ? trustedGoPlusData.token_name : null)
-                || 'Unverified Token'
+                || dexBaseName // METADATA FIX: DexScreener baseToken.name takes priority over API data
+                || (trustedCgData?.name && trustedCgData.name !== 'Unknown' && trustedCgData.name.trim() ? trustedCgData.name.trim() : null)
+                || (trustedGoPlusData?.token_name && trustedGoPlusData.token_name !== 'Unknown' && trustedGoPlusData.token_name.trim() ? trustedGoPlusData.token_name.trim() : null)
+                || (dexBaseSymbol || null) // If name missing but symbol exists, use symbol as name
+                || 'New Token' // Never show "Unverified Token"
             
             const tokenSymbol = coreToken?.symbol 
                 || bluechipToken?.symbol 
                 || whitelistEntry?.symbol 
-                || (trustedCgData?.symbol && trustedCgData.symbol !== 'UNKNOWN' ? trustedCgData.symbol : null)
-                || (trustedGoPlusData?.token_symbol && trustedGoPlusData.token_symbol !== 'UNKNOWN' ? trustedGoPlusData.token_symbol : null)
-                || 'UNKNOWN'
+                || dexBaseSymbol // METADATA FIX: DexScreener baseToken.symbol takes priority over API data
+                || (trustedCgData?.symbol && trustedCgData.symbol !== 'UNKNOWN' && trustedCgData.symbol.trim() ? trustedCgData.symbol.trim() : null)
+                || (trustedGoPlusData?.token_symbol && trustedGoPlusData.token_symbol !== 'UNKNOWN' && trustedGoPlusData.token_symbol.trim() ? trustedGoPlusData.token_symbol.trim() : null)
+                || 'NEW' // Never show "UNKNOWN"
             
             // GLOBAL RULE 4: Bluechip protection - assume liquidity exists
             const isBluechip = isExtendedBluechip(address)
@@ -1577,14 +1604,34 @@ async function analyzeToken(address: string): Promise<string> {
             const normalizedAddress = address.toLowerCase()
             const coreToken = CORE_TOKENS[normalizedAddress]
             
+            // METADATA FIX: Prioritize DexScreener baseToken for Solana pairs
+            // First read from DexScreener pair.baseToken, then Solana token metadata
+            const dexBaseToken = dexData?.baseToken || null
+            const dexBaseName = (dexBaseToken && dexBaseToken.name && dexBaseToken.name.trim()) ? dexBaseToken.name.trim() : null
+            const dexBaseSymbol = (dexBaseToken && dexBaseToken.symbol && dexBaseToken.symbol.trim()) ? dexBaseToken.symbol.trim() : null
+            
             // Safe null checks for Solana data
             const pairAge = (dexData && dexData.pairAge !== null && dexData.pairAge !== undefined) ? dexData.pairAge : null
             const liquidity = (dexData && dexData.liquidity !== null && dexData.liquidity !== undefined) ? dexData.liquidity : null
             const holderCount = (solscanData && solscanData.holderCount !== null && solscanData.holderCount !== undefined) ? solscanData.holderCount : null
             
+            // METADATA FIX: Solana token name/symbol extraction with fallbacks
+            // Priority: CORE > DexScreener baseToken > Solscan > Fallback
+            let solanaTokenName = coreToken?.name 
+                || dexBaseName 
+                || (solscanData?.name && solscanData.name.trim() ? solscanData.name.trim() : null)
+                || dexBaseSymbol // If name missing but symbol exists, use symbol as name
+                || (address.length > 8 ? `${address.substring(0, 4)}...${address.substring(address.length - 4)}` : address) // Shortened address
+                || 'New Token'
+            
+            let solanaTokenSymbol = coreToken?.symbol 
+                || dexBaseSymbol 
+                || (solscanData?.symbol && solscanData.symbol.trim() ? solscanData.symbol.trim() : null)
+                || 'NEW' // Never show "Unknown" or "UNKNOWN"
+            
             tokenData = {
-                name: coreToken?.name || (solscanData?.name || null) || 'Unknown',
-                symbol: coreToken?.symbol || (solscanData?.symbol || null) || 'Unknown',
+                name: solanaTokenName,
+                symbol: solanaTokenSymbol,
                 chain: 'Solana',
                 address,
                 tokenAge,
@@ -1635,15 +1682,31 @@ async function analyzeToken(address: string): Promise<string> {
             // Continue with safe defaults below
         }
         
-        // GLOBAL RULE 1: If tokenData is null, use safe defaults
+        // GLOBAL RULE 1: If tokenData is null, use safe defaults with DexScreener fallback
         if (!tokenData) {
             const normalizedAddress = address.toLowerCase()
             const bluechipToken = EXTENDED_BLUECHIP_LIST[normalizedAddress]
             const isBluechip = isExtendedBluechip(address)
             
+            // METADATA FIX: Try DexScreener baseToken as fallback
+            const dexBaseToken = dexData?.baseToken || null
+            const dexBaseName = (dexBaseToken && dexBaseToken.name && dexBaseToken.name.trim()) ? dexBaseToken.name.trim() : null
+            const dexBaseSymbol = (dexBaseToken && dexBaseToken.symbol && dexBaseToken.symbol.trim()) ? dexBaseToken.symbol.trim() : null
+            
+            // Fallback name/symbol extraction
+            let fallbackName = bluechipToken?.name 
+                || dexBaseName 
+                || dexBaseSymbol 
+                || (address.length > 8 ? `${address.substring(0, 4)}...${address.substring(address.length - 4)}` : address)
+                || 'New Token'
+            
+            let fallbackSymbol = bluechipToken?.symbol 
+                || dexBaseSymbol 
+                || 'NEW'
+            
             tokenData = {
-                name: bluechipToken?.name || 'Unknown Token',
-                symbol: bluechipToken?.symbol || 'UNKNOWN',
+                name: fallbackName,
+                symbol: fallbackSymbol,
                 chain: addressType === 'EVM' ? 'Ethereum' : 'Solana',
                 address,
                 tokenAge: null,
@@ -1742,6 +1805,11 @@ async function analyzeToken(address: string): Promise<string> {
                 finalRiskLevel = determineRiskLevel(finalScore, securityFlags, dataConfidence, address, tokenData.symbol, tokenData.chain, tokenAgeDays, pairAgeDays)
             }
             
+            // METADATA FIX: Check if token metadata is missing and add warning
+            const isMetadataMissing = (tokenData.name === 'New Token' || tokenData.name === 'Unknown Token') && 
+                                     (tokenData.symbol === 'NEW' || tokenData.symbol === 'UNKNOWN')
+            const isShortenedAddress = tokenData.name && tokenData.name.includes('...')
+            
             // Generate verdict (pass age data for 7-day rule check)
             let { verdict, warnings } = generateVerdict(
                 finalRiskLevel,
@@ -1753,6 +1821,13 @@ async function analyzeToken(address: string): Promise<string> {
                 pairAgeDays,
                 address
             )
+            
+            // METADATA FIX: Add warning if metadata is missing or using fallback values
+            if (isMetadataMissing && !isShortenedAddress) {
+                warnings.push('Token metadata not yet indexed – newly created or unverified token')
+            } else if (isShortenedAddress) {
+                warnings.push('Unable to fetch token metadata – using address identifier')
+            }
             
             // 7-DAY RULE: Override verdict for tokens/pairs < 7 days (already handled in generateVerdict)
             // GLOBAL RULE 3: Override verdict for very new tokens (only if not < 7 days)
