@@ -126,7 +126,7 @@ const WELL_KNOWN_TOKENS: Record<string, { name: string; symbol: string; age: num
     '0x4200000000000000000000000000000000000006': { name: 'Wrapped Ether', symbol: 'WETH', age: 520, chain: 'Base' },
     '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913': { name: 'USD Coin', symbol: 'USDC', age: 520, chain: 'Base' },
     '0x50c5725949a6f0c72e6c4a641f24049a917db0cb': { name: 'Dai Stablecoin', symbol: 'DAI', age: 520, chain: 'Base' },
-    '0x000000fa00b200406de700041cfc6b19bbfb4d13': { name: 'Towns', symbol: 'TOWNS', age: 180, chain: 'Base' },
+    '0x000000fa00b200406de700041cfc6b19bbfb4d13': { name: 'Towns Protocol', symbol: 'TOWNS', age: 180, chain: 'Base' }, // CMC Rank #782, $17.94M market cap, 53.45K holders
     
     // ===== BSC (BINANCE SMART CHAIN) =====
     '0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c': { name: 'Wrapped BNB', symbol: 'WBNB', age: 1600 },
@@ -241,6 +241,9 @@ const EXTENDED_BLUECHIP_LIST: Record<string, { name: string; symbol: string; cha
     
     // Optimism
     '0x7f5c764cbc14f9669b88837ca1490cca17c31607': { name: 'USD Coin', symbol: 'USDC', chain: 'Optimism' },
+    
+    // Base - Towns Protocol (CMC #782, established token)
+    '0x000000fa00b200406de700041cfc6b19bbfb4d13': { name: 'Towns Protocol', symbol: 'TOWNS', chain: 'Base' },
 }
 
 function isExtendedBluechip(address: string): boolean {
