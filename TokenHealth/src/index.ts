@@ -209,7 +209,7 @@ const CORE_TOKENS: Record<string, { name: string; symbol: string; chain: string;
 // ============================================================================
 
 const EXTENDED_BLUECHIP_LIST: Record<string, { name: string; symbol: string; chain: string }> = {
-    // Ethereum
+    // Ethereum - Top 100 tokens
     '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': { name: 'Wrapped Ether', symbol: 'WETH', chain: 'Ethereum' },
     '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': { name: 'USD Coin', symbol: 'USDC', chain: 'Ethereum' },
     '0xdac17f958d2ee523a2206206994597c13d831ec7': { name: 'Tether USD', symbol: 'USDT', chain: 'Ethereum' },
@@ -220,30 +220,60 @@ const EXTENDED_BLUECHIP_LIST: Record<string, { name: string; symbol: string; cha
     '0x7d1afa7b718fb893db30a3abc0cfc608aacfebb0': { name: 'Matic Token', symbol: 'MATIC', chain: 'Ethereum' },
     '0x1a4b46696b2bb4794eb3d3a9566869a02af5b095': { name: 'Arbitrum', symbol: 'ARB', chain: 'Ethereum' },
     '0x4200000000000000000000000000000000000042': { name: 'Optimism', symbol: 'OP', chain: 'Ethereum' },
+    '0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9': { name: 'Aave', symbol: 'AAVE', chain: 'Ethereum' },
+    '0xc00e94cb662c3520282e6f5717214004a7f26888': { name: 'Compound', symbol: 'COMP', chain: 'Ethereum' },
+    '0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2': { name: 'Maker', symbol: 'MKR', chain: 'Ethereum' },
+    '0x0bc529c00c6401aef6d220be8c6ea1667f6ad93e': { name: 'yearn.finance', symbol: 'YFI', chain: 'Ethereum' },
+    '0xd533a949740bb3306d119cc777fa900ba034cd52': { name: 'Curve DAO Token', symbol: 'CRV', chain: 'Ethereum' },
+    '0x6b3595068778dd592e39a122f4f5a5cf09c90fe2': { name: 'SushiSwap', symbol: 'SUSHI', chain: 'Ethereum' },
+    '0xae7ab96520de3a18e5e111b5eaab095312d7fe84': { name: 'Lido Staked Ether', symbol: 'stETH', chain: 'Ethereum' },
+    '0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0': { name: 'Wrapped stETH', symbol: 'wstETH', chain: 'Ethereum' },
+    '0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce': { name: 'Shiba Inu', symbol: 'SHIB', chain: 'Ethereum' },
+    '0x4d224452801aced8b2f0aebe155379bb5d594381': { name: 'ApeCoin', symbol: 'APE', chain: 'Ethereum' },
+    '0x111111111117dc0aa78b770fa6a738034120c302': { name: '1inch', symbol: '1INCH', chain: 'Ethereum' },
+    '0x0d8775f648430679a709e98d2b0cb6250d2887ef': { name: 'Basic Attention Token', symbol: 'BAT', chain: 'Ethereum' },
+    '0xba100000625a3754423978a60c9317c58a424e3d': { name: 'Balancer', symbol: 'BAL', chain: 'Ethereum' },
+    '0x3845badade8e6dff049820680d1f14bd3903a5d0': { name: 'The Sandbox', symbol: 'SAND', chain: 'Ethereum' },
+    '0x0f5d2fb29fb7d3cfee444a200298f468908cc942': { name: 'Decentraland', symbol: 'MANA', chain: 'Ethereum' },
+    '0xbb0e17ef65f82ab018d8edd776e8dd940327b28b': { name: 'Axie Infinity', symbol: 'AXS', chain: 'Ethereum' },
+    '0xf629cbd94d3791c9250152bd8dfbdf380e2a3b9c': { name: 'Enjin Coin', symbol: 'ENJ', chain: 'Ethereum' },
+    '0xa0b73e1ff0b80914ab6fe0444e65848c4c34450b': { name: 'Cronos', symbol: 'CRO', chain: 'Ethereum' },
+    '0x1f573d6fb3f13d689ff844b4ce37794d79a7ff1c': { name: 'Bancor Network Token', symbol: 'BNT', chain: 'Ethereum' },
+    '0xe41d2489571d322189246dafa5ebde1f4699f498': { name: '0x Protocol', symbol: 'ZRX', chain: 'Ethereum' },
     
     // BSC
     '0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c': { name: 'Wrapped BNB', symbol: 'WBNB', chain: 'BSC' },
     '0x55d398326f99059ff775485246999027b3197955': { name: 'Tether USD', symbol: 'USDT', chain: 'BSC' },
     '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d': { name: 'USD Coin', symbol: 'USDC', chain: 'BSC' },
+    '0xe9e7cea3dedca5984780bafc599bd69add087d56': { name: 'Binance USD', symbol: 'BUSD', chain: 'BSC' },
+    '0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82': { name: 'PancakeSwap', symbol: 'CAKE', chain: 'BSC' },
     
     // Polygon
     '0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270': { name: 'Wrapped Matic', symbol: 'WMATIC', chain: 'Polygon' },
     '0x2791bca1f2de4661ed88a30c99a7a9449aa84174': { name: 'USD Coin', symbol: 'USDC', chain: 'Polygon' },
+    '0xc2132d05d31c914a87c6611c10748aeb04b58e8f': { name: 'Tether USD', symbol: 'USDT', chain: 'Polygon' },
+    '0x0b3f868e0be5597d5db7feb59e1cadbb0fdda50a': { name: 'SushiSwap', symbol: 'SUSHI', chain: 'Polygon' },
+    '0xd6df932a45c0f255f85145f286ea0b292b21c90b': { name: 'Aave', symbol: 'AAVE', chain: 'Polygon' },
     
     // Arbitrum
     '0x82af49447d8a07e3bd95bd0d56f35241523fbab1': { name: 'Wrapped Ether', symbol: 'WETH', chain: 'Arbitrum' },
     '0xff970a61a04b1ca14834a43f5de4533ebddb5cc8': { name: 'USD Coin', symbol: 'USDC', chain: 'Arbitrum' },
+    '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9': { name: 'Tether USD', symbol: 'USDT', chain: 'Arbitrum' },
+    '0xda10009cbd5d07dd0cecc66161fc93d7c9000da1': { name: 'Dai Stablecoin', symbol: 'DAI', chain: 'Arbitrum' },
     '0x912ce59144191c1204e64559fe8253a0e49e6548': { name: 'Arbitrum', symbol: 'ARB', chain: 'Arbitrum' },
     
     // Base
     '0x4200000000000000000000000000000000000006': { name: 'Wrapped Ether', symbol: 'WETH', chain: 'Base' },
     '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913': { name: 'USD Coin', symbol: 'USDC', chain: 'Base' },
+    '0x50c5725949a6f0c72e6c4a641f24049a917db0cb': { name: 'Dai Stablecoin', symbol: 'DAI', chain: 'Base' },
+    '0x000000fa00b200406de700041cfc6b19bbfb4d13': { name: 'Towns Protocol', symbol: 'TOWNS', chain: 'Base' },
     
     // Optimism
+    '0x4200000000000000000000000000000000000006': { name: 'Wrapped Ether', symbol: 'WETH', chain: 'Optimism' },
     '0x7f5c764cbc14f9669b88837ca1490cca17c31607': { name: 'USD Coin', symbol: 'USDC', chain: 'Optimism' },
-    
-    // Base - Towns Protocol (CMC #782, established token)
-    '0x000000fa00b200406de700041cfc6b19bbfb4d13': { name: 'Towns Protocol', symbol: 'TOWNS', chain: 'Base' },
+    '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58': { name: 'Tether USD', symbol: 'USDT', chain: 'Optimism' },
+    '0xda10009cbd5d07dd0cecc66161fc93d7c9000da1': { name: 'Dai Stablecoin', symbol: 'DAI', chain: 'Optimism' },
+    '0x4200000000000000000000000000000000000042': { name: 'Optimism', symbol: 'OP', chain: 'Optimism' },
 }
 
 function isExtendedBluechip(address: string): boolean {
@@ -270,17 +300,29 @@ const WRAPPED_NATIVE_ADDRESSES: Record<string, string[]> = {
 async function fetchWithRetry<T>(
     fetchFn: () => Promise<T>,
     retries: number = 2,
-    delayMs: number = 1000
+    delayMs: number = 1000,
+    timeoutMs: number = 8000
 ): Promise<T | null> {
     for (let attempt = 0; attempt <= retries; attempt++) {
         try {
-            return await fetchFn()
+            // Add timeout protection using Promise.race
+            const timeoutPromise = new Promise<never>((_, reject) => 
+                setTimeout(() => reject(new Error('Request timeout')), timeoutMs)
+            )
+            
+            const result = await Promise.race([
+                fetchFn(),
+                timeoutPromise
+            ])
+            
+            return result
         } catch (error) {
             if (attempt === retries) {
-                console.error('Fetch failed after retries:', error)
+                console.error('[FetchWithRetry] Failed after retries:', error)
                 return null
             }
-            await new Promise(resolve => setTimeout(resolve, delayMs * (attempt + 1)))
+            // Exponential backoff
+            await new Promise(resolve => setTimeout(resolve, delayMs * Math.pow(2, attempt)))
         }
     }
     return null
@@ -311,31 +353,56 @@ async function detectEVMChain(address: string): Promise<string> {
         return WELL_KNOWN_TOKENS[normalizedAddress].chain!
     }
     
-    // Try GoPlus multi-chain detection
+    // Check CORE_TOKENS and EXTENDED_BLUECHIP_LIST for chain info
+    if (CORE_TOKENS[normalizedAddress]?.chain) {
+        return CORE_TOKENS[normalizedAddress].chain
+    }
+    if (EXTENDED_BLUECHIP_LIST[normalizedAddress]?.chain) {
+        return EXTENDED_BLUECHIP_LIST[normalizedAddress].chain
+    }
+    
+    // Try GoPlus multi-chain detection with timeout
     try {
         const chains = ['eth', 'bsc', 'base', 'arbitrum', 'polygon', 'optimism']
         
         for (const chain of chains) {
-            const response = await fetch(
-                `https://api.gopluslabs.io/api/v1/token_security/${chain === 'eth' ? '1' : chain}?contract_addresses=${address}`
-            )
-            const data = await response.json()
-            
-            if (data.result && Object.keys(data.result).length > 0) {
-                const chainNames: Record<string, string> = {
-                    '1': 'Ethereum',
-                    'eth': 'Ethereum',
-                    'bsc': 'BSC',
-                    'base': 'Base',
-                    'arbitrum': 'Arbitrum',
-                    'polygon': 'Polygon',
-                    'optimism': 'Optimism'
+            try {
+                const controller = new AbortController()
+                const timeoutId = setTimeout(() => controller.abort(), 5000) // 5s timeout
+                
+                const response = await fetch(
+                    `https://api.gopluslabs.io/api/v1/token_security/${chain === 'eth' ? '1' : chain}?contract_addresses=${address}`,
+                    { signal: controller.signal }
+                )
+                
+                clearTimeout(timeoutId)
+                
+                if (!response?.ok) continue
+                
+                const data = await response.json()
+                
+                if (data?.result && typeof data.result === 'object' && Object.keys(data.result).length > 0) {
+                    const chainNames: Record<string, string> = {
+                        '1': 'Ethereum',
+                        'eth': 'Ethereum',
+                        'bsc': 'BSC',
+                        'base': 'Base',
+                        'arbitrum': 'Arbitrum',
+                        'polygon': 'Polygon',
+                        'optimism': 'Optimism'
+                    }
+                    return chainNames[chain] || 'Ethereum'
                 }
-                return chainNames[chain] || 'Ethereum'
+            } catch (fetchError) {
+                // Continue to next chain if this one fails
+                if (fetchError instanceof Error && fetchError.name !== 'AbortError') {
+                    console.error(`[ChainDetection] Failed for ${chain}:`, fetchError)
+                }
+                continue
             }
         }
     } catch (error) {
-        console.error('Chain detection failed:', error)
+        console.error('[ChainDetection] Outer error:', error)
     }
     
     // Default to Ethereum for valid EVM addresses
@@ -471,21 +538,35 @@ async function fetchDexscreenerData(address: string): Promise<any> {
                 if (!mainPair) return null
                 
                 return {
-                    liquidity: mainPair?.liquidity?.usd || null,
+                    liquidity: (mainPair?.liquidity?.usd !== null && mainPair?.liquidity?.usd !== undefined) ? mainPair.liquidity.usd : null,
                     pairAge: mainPair?.pairCreatedAt ? 
                         Math.floor((Date.now() - mainPair.pairCreatedAt) / (1000 * 60 * 60 * 24)) : null,
                     pairAgeHours: mainPair?.pairCreatedAt ?
                         Math.floor((Date.now() - mainPair.pairCreatedAt) / (1000 * 60 * 60)) : null,
-                    txns24h: mainPair?.txns?.h24 || null,
-                    volume24h: mainPair?.volume?.h24 || null,
+                    txns24h: (mainPair?.txns?.h24 !== null && mainPair?.txns?.h24 !== undefined) ? mainPair.txns.h24 : null,
+                    volume24h: (mainPair?.volume?.h24 !== null && mainPair?.volume?.h24 !== undefined) ? mainPair.volume.h24 : null,
                 }
             } catch (err) {
                 console.error('[DexScreener] Fetch error:', err)
                 return null
             }
-        })
+        }, 2, 1000, 8000)
     } catch (error) {
         console.error('[DexScreener] Outer error:', error)
+        return null
+    }
+}
+
+// Fallback liquidity check via CoinGecko (if available)
+async function fetchLiquidityFallback(address: string, chain: string, cgData: any): Promise<number | null> {
+    try {
+        // If CoinGecko has market data, assume some liquidity exists (conservative estimate)
+        if (cgData && cgData.marketCap && cgData.marketCap > 0) {
+            // Very conservative: assume at least 1% of market cap is liquidity
+            return Math.floor(cgData.marketCap * 0.01)
+        }
+        return null
+    } catch (error) {
         return null
     }
 }
@@ -594,9 +675,11 @@ async function calculateTokenAge(
         }
         
         // Try Dexscreener pair age
-        if (dexData?.pairAge !== null && dexData?.pairAge !== undefined) {
+        if (dexData && dexData.pairAge !== null && dexData.pairAge !== undefined) {
             const ageDays = Math.floor(dexData.pairAge)
-            const ageHours = dexData?.pairAgeHours || (ageDays * 24)
+            const ageHours = (dexData.pairAgeHours !== null && dexData.pairAgeHours !== undefined) 
+                ? dexData.pairAgeHours 
+                : (ageDays * 24)
             return { ageDays, ageHours }
         }
         
@@ -621,20 +704,31 @@ async function calculateTokenAge(
 }
 
 // Detect if token is very new (<24h contract or <1h pair)
-function isVeryNewToken(tokenAge: { ageDays: number | null; ageHours: number | null }, pairAgeHours: number | null): boolean {
+function isVeryNewToken(tokenAge: { ageDays: number | null; ageHours: number | null }, pairAgeHours: number | null, dexData: any): boolean {
     try {
         // Contract age < 24 hours
-        if (tokenAge.ageHours !== null && tokenAge.ageHours < 24) {
+        if (tokenAge.ageHours !== null && tokenAge.ageHours !== undefined && tokenAge.ageHours < 24) {
             return true
         }
         
         // Pair age < 1 hour
-        if (pairAgeHours !== null && pairAgeHours < 1) {
+        if (pairAgeHours !== null && pairAgeHours !== undefined && pairAgeHours < 1) {
             return true
+        }
+        
+        // If DexScreener data is missing and we can't determine age, treat as potentially very new
+        // But only if we don't have any age data from other sources
+        if (tokenAge.ageDays === null && tokenAge.ageHours === null && pairAgeHours === null) {
+            // Check if we have DexScreener data at all
+            if (!dexData || (dexData.liquidity === null || dexData.liquidity === undefined)) {
+                // No data available - could be very new, but we'll be conservative
+                return false // Don't auto-flag as very new if we just don't have data
+            }
         }
         
         return false
     } catch (error) {
+        console.error('[isVeryNewToken] Error:', error)
         return false
     }
 }
@@ -648,7 +742,8 @@ function calculateDataConfidence(
     goPlusData: any,
     explorerData: any,
     dexData: any,
-    addressType: string
+    addressType: string,
+    cgData?: any
 ): DataConfidence & { apiFailures: string[] } {
     const checks = []
     const missing: string[] = []
@@ -668,22 +763,27 @@ function calculateDataConfidence(
         apiFailures.push('Explorer')
         confidence -= 10
     }
+    if (!cgData && addressType === 'EVM') {
+        apiFailures.push('CoinGecko')
+        confidence -= 5
+    }
     
     // Define critical checks based on chain type
     if (addressType === 'EVM') {
-        checks.push({ field: 'Token Age', available: tokenData.tokenAge !== null })
-        checks.push({ field: 'Liquidity', available: tokenData.liquidity !== null })
-        checks.push({ field: 'Contract Verification', available: tokenData.contractVerified !== null })
-        checks.push({ field: 'Holder Count', available: tokenData.holderCount !== null })
-        checks.push({ field: 'Honeypot Check', available: goPlusData !== null })
-        checks.push({ field: 'Owner Privileges', available: goPlusData !== null })
-        checks.push({ field: 'Explorer Data', available: explorerData !== null })
+        checks.push({ field: 'Token Age', available: tokenData.tokenAge !== null && tokenData.tokenAge !== undefined })
+        checks.push({ field: 'Liquidity', available: tokenData.liquidity !== null && tokenData.liquidity !== undefined })
+        checks.push({ field: 'Contract Verification', available: tokenData.contractVerified !== null && tokenData.contractVerified !== undefined })
+        checks.push({ field: 'Holder Count', available: tokenData.holderCount !== null && tokenData.holderCount !== undefined })
+        checks.push({ field: 'Honeypot Check', available: goPlusData !== null && goPlusData !== undefined })
+        checks.push({ field: 'Owner Privileges', available: goPlusData !== null && goPlusData !== undefined })
+        checks.push({ field: 'Explorer Data', available: explorerData !== null && explorerData !== undefined })
+        checks.push({ field: 'Market Data', available: cgData !== null && cgData !== undefined })
     } else if (addressType === 'SOLANA') {
-        checks.push({ field: 'Token Age', available: tokenData.tokenAge !== null })
-        checks.push({ field: 'Liquidity', available: tokenData.liquidity !== null })
-        checks.push({ field: 'Holder Count', available: tokenData.holderCount !== null })
-        checks.push({ field: 'Mint Authority', available: dexData !== null })
-        checks.push({ field: 'Freeze Authority', available: dexData !== null })
+        checks.push({ field: 'Token Age', available: tokenData.tokenAge !== null && tokenData.tokenAge !== undefined })
+        checks.push({ field: 'Liquidity', available: tokenData.liquidity !== null && tokenData.liquidity !== undefined })
+        checks.push({ field: 'Holder Count', available: tokenData.holderCount !== null && tokenData.holderCount !== undefined })
+        checks.push({ field: 'Mint Authority', available: dexData !== null && dexData !== undefined })
+        checks.push({ field: 'Freeze Authority', available: dexData !== null && dexData !== undefined })
     }
     
     const successfulChecks = checks.filter(c => c.available).length
@@ -694,10 +794,19 @@ function calculateDataConfidence(
         if (!check.available) missing.push(check.field)
     })
     
+    // Improved confidence calculation: consider both API success rate and data completeness
+    const dataCompleteness = percentage
+    const apiReliability = Math.max(0, confidence)
+    const combinedConfidence = (dataCompleteness * 0.6) + (apiReliability * 0.4)
+    
     let level: 'HIGH' | 'MEDIUM' | 'LOW'
-    if (percentage > 80 && confidence >= 70) level = 'HIGH'
-    else if (percentage >= 40 && confidence >= 50) level = 'MEDIUM'
-    else level = 'LOW'
+    if (combinedConfidence >= 75 && percentage >= 70 && successfulChecks >= 5) {
+        level = 'HIGH'
+    } else if (combinedConfidence >= 50 && percentage >= 40 && successfulChecks >= 3) {
+        level = 'MEDIUM'
+    } else {
+        level = 'LOW'
+    }
     
     return {
         level,
@@ -728,7 +837,10 @@ function detectSecurityFlags(
     const isWrapped = isWrappedNativeToken(address, symbol, chain)
     
     // For core/wrapped tokens, liquidity is always considered safe
-    const hasLiquidity = dexData && dexData.liquidity !== null && dexData.liquidity !== undefined && dexData.liquidity >= 1000
+    // Distinguish between "no liquidity" (liquidity = 0 or < 1000) vs "data unavailable" (liquidity = null/undefined)
+    const liquidityValue = (dexData && dexData.liquidity !== null && dexData.liquidity !== undefined) ? dexData.liquidity : null
+    const hasLiquidity = liquidityValue !== null && liquidityValue >= 1000
+    const liquidityUnavailable = liquidityValue === null
     
     return {
         honeypot: addressType === 'EVM' && (
@@ -749,10 +861,13 @@ function detectSecurityFlags(
         // Core tokens and wrapped natives: skip verification penalty
         unverifiedContract: addressType === 'EVM' && !isCore && !isWrapped && explorerData?.verified === false,
         // Core tokens and wrapped natives: never flag as no liquidity
-        noLiquidity: !isCore && !isWrapped && (!hasLiquidity || (dexData && dexData.liquidity < 1000)),
+        // Only flag as "no liquidity" if we have data showing liquidity < 1000
+        // If liquidity is unavailable (null), don't flag as "no liquidity" - that's a data issue, not a risk
+        noLiquidity: !isCore && !isWrapped && !liquidityUnavailable && (!hasLiquidity || (liquidityValue !== null && liquidityValue < 1000)),
         newToken: tokenAge !== null && tokenAge < 7,
         // Core tokens and wrapped natives: never flag as not listed
-        notListed: !isCore && !isWrapped && (!dexData || dexData.liquidity === null || dexData.liquidity === undefined)
+        // Only flag as "not listed" if we have data showing no liquidity, not if data is unavailable
+        notListed: !isCore && !isWrapped && !liquidityUnavailable && (!hasLiquidity || (liquidityValue !== null && liquidityValue < 1000))
     }
 }
 
@@ -976,12 +1091,20 @@ function generateVerdict(
     }
     
     // NEW TOKEN WARNINGS
-    if (tokenAge !== null && tokenAge < 1) {
+    if (tokenAge !== null && tokenAge !== undefined && tokenAge < 1) {
         warnings.push('🚨 VERY NEW TOKEN – Extremely high rug risk')
         warnings.push('Token created less than 24 hours ago')
         return {
             verdict: '🟡 EARLY-STAGE TOKEN – Launch-phase rug risk is extremely high.',
             warnings
+        }
+    }
+    
+    // Very new pair detection (even if contract is older)
+    if (dataConfidence.level === 'LOW' && tokenAge === null) {
+        return {
+            verdict: '⚠️ NEWLY CREATED TOKEN – Limited on-chain history available.',
+            warnings: ['Token is newly created – limited on-chain history available', 'Market and liquidity data still forming']
         }
     }
     
@@ -1175,12 +1298,6 @@ async function analyzeToken(address: string): Promise<string> {
         let cgData: any = null
         
         try {
-        let tokenData: TokenData
-        let goPlusData: any = null
-        let explorerData: any = null
-        let dexData: any = null
-        let solscanData: any = null
-        let cgData: any = null
         
         // EVM ANALYSIS
         if (addressType === 'EVM') {
@@ -1209,34 +1326,54 @@ async function analyzeToken(address: string): Promise<string> {
             const whitelistEntry = WELL_KNOWN_TOKENS[normalizedAddress]
             
             // GLOBAL RULE 8: Verify metadata from multiple sources to prevent mismatches
-            const symbols = [
-                coreToken?.symbol,
-                bluechipToken?.symbol,
-                whitelistEntry?.symbol,
-                cgData?.symbol,
-                goPlusData?.token_symbol
-            ].filter(Boolean)
+            // Validate that API data matches the address being analyzed
+            const apiAddress = goPlusData?.token_address ? goPlusData.token_address.toLowerCase() : null
+            const cgAddress = cgData?.contract_address ? cgData.contract_address.toLowerCase() : null
             
-            // Use most trusted source (CORE > Bluechip > Whitelist > API)
-            const tokenName = coreToken?.name || bluechipToken?.name || whitelistEntry?.name || cgData?.name || goPlusData?.token_name || 'Unverified Token'
-            const tokenSymbol = coreToken?.symbol || bluechipToken?.symbol || whitelistEntry?.symbol || cgData?.symbol || goPlusData?.token_symbol || 'UNKNOWN'
+            // Only trust API data if address matches
+            const trustedGoPlusData = (apiAddress === normalizedAddress || !apiAddress) ? goPlusData : null
+            const trustedCgData = (cgAddress === normalizedAddress || !cgAddress) ? cgData : null
+            
+            // Use most trusted source (CORE > Bluechip > Whitelist > Validated API)
+            const tokenName = coreToken?.name 
+                || bluechipToken?.name 
+                || whitelistEntry?.name 
+                || (trustedCgData?.name && trustedCgData.name !== 'Unknown' ? trustedCgData.name : null)
+                || (trustedGoPlusData?.token_name && trustedGoPlusData.token_name !== 'Unknown' ? trustedGoPlusData.token_name : null)
+                || 'Unverified Token'
+            
+            const tokenSymbol = coreToken?.symbol 
+                || bluechipToken?.symbol 
+                || whitelistEntry?.symbol 
+                || (trustedCgData?.symbol && trustedCgData.symbol !== 'UNKNOWN' ? trustedCgData.symbol : null)
+                || (trustedGoPlusData?.token_symbol && trustedGoPlusData.token_symbol !== 'UNKNOWN' ? trustedGoPlusData.token_symbol : null)
+                || 'UNKNOWN'
             
             // GLOBAL RULE 4: Bluechip protection - assume liquidity exists
             const isBluechip = isExtendedBluechip(address)
             const assumedLiquidity = (isBluechip || coreToken?.isWrappedNative) ? 1000000 : null
+            
+            // Safe null checks for all fields
+            const pairAge = (dexData && dexData.pairAge !== null && dexData.pairAge !== undefined) ? dexData.pairAge : null
+            const liquidity = assumedLiquidity || (dexData && dexData.liquidity !== null && dexData.liquidity !== undefined) ? dexData.liquidity : null
+            const holderCount = (goPlusData && goPlusData.holder_count !== null && goPlusData.holder_count !== undefined) 
+                ? parseInt(String(goPlusData.holder_count), 10) 
+                : null
             
             tokenData = {
                 name: tokenName,
                 symbol: tokenSymbol,
                 chain,
                 address,
-                tokenAge: coreToken?.isWrappedNative ? 1100 : tokenAge,
-                pairAge: dexData?.pairAge || null,
-                liquidity: assumedLiquidity || dexData?.liquidity || null,
-                holderCount: goPlusData?.holder_count ? parseInt(String(goPlusData.holder_count)) : null,
-                contractVerified: explorerData?.verified ?? (coreToken || isBluechip ? true : null),
-                marketCap: cgData?.marketCap || null,
-                cmcRank: cgData?.cmcRank || null,
+                tokenAge: coreToken?.isWrappedNative ? 1100 : (tokenAge !== null && tokenAge !== undefined ? tokenAge : null),
+                pairAge,
+                liquidity,
+                holderCount,
+                contractVerified: (explorerData && explorerData.verified !== null && explorerData.verified !== undefined) 
+                    ? explorerData.verified 
+                    : (coreToken || isBluechip ? true : null),
+                marketCap: (cgData && cgData.marketCap !== null && cgData.marketCap !== undefined) ? cgData.marketCap : null,
+                cmcRank: (cgData && cgData.cmcRank !== null && cgData.cmcRank !== undefined) ? cgData.cmcRank : null,
                 cmcListed: !!cgData
             }
         }
@@ -1252,7 +1389,7 @@ async function analyzeToken(address: string): Promise<string> {
             
             // Calculate Solana token age (approximate from creation slot)
             let tokenAge: number | null = null
-            if (dexData?.pairAge !== null) {
+            if (dexData && dexData.pairAge !== null && dexData.pairAge !== undefined) {
                 tokenAge = dexData.pairAge
             }
             
@@ -1260,19 +1397,32 @@ async function analyzeToken(address: string): Promise<string> {
             const normalizedAddress = address.toLowerCase()
             const coreToken = CORE_TOKENS[normalizedAddress]
             
+            // Safe null checks for Solana data
+            const pairAge = (dexData && dexData.pairAge !== null && dexData.pairAge !== undefined) ? dexData.pairAge : null
+            const liquidity = (dexData && dexData.liquidity !== null && dexData.liquidity !== undefined) ? dexData.liquidity : null
+            const holderCount = (solscanData && solscanData.holderCount !== null && solscanData.holderCount !== undefined) ? solscanData.holderCount : null
+            
             tokenData = {
-                name: coreToken?.name || solscanData?.name || 'Unknown',
-                symbol: coreToken?.symbol || solscanData?.symbol || 'Unknown',
+                name: coreToken?.name || (solscanData?.name || null) || 'Unknown',
+                symbol: coreToken?.symbol || (solscanData?.symbol || null) || 'Unknown',
                 chain: 'Solana',
                 address,
                 tokenAge,
-                pairAge: dexData?.pairAge || null,
-                liquidity: dexData?.liquidity || null,
-                holderCount: solscanData?.holderCount || null,
+                pairAge,
+                liquidity,
+                holderCount,
                 contractVerified: null, // N/A for Solana
                 marketCap: null,
                 cmcRank: null,
                 cmcListed: false
+            }
+        }
+        
+        // Try liquidity fallback if DexScreener failed (EVM only)
+        if (addressType === 'EVM' && tokenData && tokenData.liquidity === null && cgData) {
+            const fallbackLiquidity = await fetchLiquidityFallback(address, tokenData.chain, cgData)
+            if (fallbackLiquidity !== null) {
+                tokenData.liquidity = fallbackLiquidity
             }
         }
         
@@ -1282,7 +1432,8 @@ async function analyzeToken(address: string): Promise<string> {
             goPlusData,
             explorerData,
             dexData,
-            addressType
+            addressType,
+            cgData
         )
         
         // Detect security flags (with core/wrapped detection)
@@ -1328,13 +1479,24 @@ async function analyzeToken(address: string): Promise<string> {
         
         // Continue with analysis using tokenData (even if partial)
         try {
-            // Calculate data confidence
+            // Try liquidity fallback if DexScreener failed
+            let finalLiquidity = tokenData.liquidity
+            if (finalLiquidity === null && cgData) {
+                const fallbackLiquidity = await fetchLiquidityFallback(address, tokenData.chain, cgData)
+                if (fallbackLiquidity !== null) {
+                    finalLiquidity = fallbackLiquidity
+                    tokenData.liquidity = fallbackLiquidity
+                }
+            }
+            
+            // Calculate data confidence (with improved accuracy)
             const dataConfidence = calculateDataConfidence(
                 tokenData,
                 goPlusData,
                 explorerData,
                 dexData,
-                addressType
+                addressType,
+                cgData
             )
             
             // Detect security flags
@@ -1358,7 +1520,8 @@ async function analyzeToken(address: string): Promise<string> {
             
             // GLOBAL RULE 3: Detect very new tokens
             const tokenAgeResult = await calculateTokenAge(address, tokenData.chain, dexData, explorerData, cgData)
-            const isVeryNew = isVeryNewToken(tokenAgeResult, dexData?.pairAgeHours || null)
+            const pairAgeHours = (dexData && dexData.pairAgeHours !== null && dexData.pairAgeHours !== undefined) ? dexData.pairAgeHours : null
+            const isVeryNew = isVeryNewToken(tokenAgeResult, pairAgeHours, dexData)
             
             // Calculate score
             const { score, penalties } = calculateHealthScore(
@@ -1427,21 +1590,114 @@ async function analyzeToken(address: string): Promise<string> {
         } catch (analysisError) {
             // GLOBAL RULE 9: Safe default behavior if everything fails
             console.error('[AnalyzeToken] Analysis error:', analysisError)
-            return `⚠️ PARTIAL ANALYSIS COMPLETED\n\n` +
-                   `Risk: ⚠️ MEDIUM\n` +
-                   `Health Score: 65/100\n\n` +
-                   `Insufficient data available. Treat with caution and verify manually.\n\n` +
-                   `⚠️ Some market or explorer data unavailable.`
+            
+            // Try to return a minimal but valid report
+            const normalizedAddress = address.toLowerCase()
+            const bluechipToken = EXTENDED_BLUECHIP_LIST[normalizedAddress]
+            const isBluechip = isExtendedBluechip(address)
+            
+            const safeTokenData: TokenData = {
+                name: bluechipToken?.name || 'Unknown Token',
+                symbol: bluechipToken?.symbol || 'UNKNOWN',
+                chain: addressType === 'EVM' ? 'Ethereum' : 'Solana',
+                address,
+                tokenAge: null,
+                pairAge: null,
+                liquidity: isBluechip ? 1000000 : null,
+                holderCount: null,
+                contractVerified: isBluechip ? true : null,
+                marketCap: null,
+                cmcRank: null,
+                cmcListed: false
+            }
+            
+            const safeAnalysis: RiskAnalysis = {
+                healthScore: isBluechip ? 75 : 65,
+                riskLevel: 'MEDIUM',
+                dataConfidence: {
+                    level: 'LOW',
+                    percentage: 0,
+                    successfulChecks: 0,
+                    totalChecks: 7,
+                    missingFields: ['All data sources unavailable']
+                },
+                securityFlags: {
+                    honeypot: false,
+                    mintAuthority: false,
+                    freezeAuthority: false,
+                    blacklistAuthority: false,
+                    ownerPrivileges: false,
+                    proxyUpgradeable: false,
+                    unverifiedContract: false,
+                    noLiquidity: !isBluechip,
+                    newToken: false,
+                    notListed: !isBluechip
+                },
+                penalties: [{ reason: 'Insufficient data to perform thorough analysis', points: isBluechip ? 25 : 35 }],
+                verdict: isBluechip 
+                    ? '⚠️ MEDIUM RISK – Established token. Some data temporarily unavailable.'
+                    : '⚠️ INSUFFICIENT DATA – Risk cannot be accurately determined.',
+                warnings: ['Partial analysis completed. Some data sources unavailable.']
+            }
+            
+            return generateReport(safeTokenData, safeAnalysis, addressType)
         }
         
     } catch (error) {
         // GLOBAL RULE 1 & 9: Never crash, always return safe defaults
         console.error('[AnalyzeToken] Outer error:', error)
-        return `⚠️ PARTIAL ANALYSIS COMPLETED\n\n` +
-               `Risk: ⚠️ MEDIUM\n` +
-               `Health Score: 65/100\n\n` +
-               `Insufficient data available. Treat with caution and verify manually.\n\n` +
-               `⚠️ Some market or explorer data unavailable.`
+        
+        // Return a minimal valid report even on catastrophic failure
+        const addressType = detectAddressType(address)
+        const normalizedAddress = address.toLowerCase()
+        const bluechipToken = EXTENDED_BLUECHIP_LIST[normalizedAddress]
+        const isBluechip = isExtendedBluechip(address)
+        
+        const safeTokenData: TokenData = {
+            name: bluechipToken?.name || 'Unknown Token',
+            symbol: bluechipToken?.symbol || 'UNKNOWN',
+            chain: addressType === 'EVM' ? 'Ethereum' : 'Solana',
+            address,
+            tokenAge: null,
+            pairAge: null,
+            liquidity: isBluechip ? 1000000 : null,
+            holderCount: null,
+            contractVerified: isBluechip ? true : null,
+            marketCap: null,
+            cmcRank: null,
+            cmcListed: false
+        }
+        
+        const safeAnalysis: RiskAnalysis = {
+            healthScore: isBluechip ? 75 : 65,
+            riskLevel: 'MEDIUM',
+            dataConfidence: {
+                level: 'LOW',
+                percentage: 0,
+                successfulChecks: 0,
+                totalChecks: 7,
+                missingFields: ['All data sources unavailable']
+            },
+            securityFlags: {
+                honeypot: false,
+                mintAuthority: false,
+                freezeAuthority: false,
+                blacklistAuthority: false,
+                ownerPrivileges: false,
+                proxyUpgradeable: false,
+                unverifiedContract: false,
+                noLiquidity: !isBluechip,
+                newToken: false,
+                notListed: !isBluechip
+            },
+            penalties: [{ reason: 'Insufficient data to perform thorough analysis', points: isBluechip ? 25 : 35 }],
+            verdict: isBluechip 
+                ? '⚠️ MEDIUM RISK – Established token. Some data temporarily unavailable.'
+                : '⚠️ INSUFFICIENT DATA – Risk cannot be accurately determined.',
+            warnings: ['Partial analysis completed. Some data sources unavailable.']
+        }
+        
+        return generateReport(safeTokenData, safeAnalysis, addressType)
     }
 }
 
