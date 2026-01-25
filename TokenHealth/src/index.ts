@@ -537,12 +537,30 @@ async function fetchDexscreenerData(address: string): Promise<any> {
                 
                 if (!mainPair) return null
                 
+                // 7-DAY RULE: Safely extract pair creation timestamp
+                // Check both pairCreatedAt and createdAt (whichever exists)
+                const pairTimestamp = mainPair?.pairCreatedAt || mainPair?.createdAt || null
+                let pairAge: number | null = null
+                let pairAgeHours: number | null = null
+                
+                if (pairTimestamp !== null && pairTimestamp !== undefined) {
+                    try {
+                        const timestampMs = typeof pairTimestamp === 'number' ? pairTimestamp : parseInt(String(pairTimestamp), 10)
+                        if (!isNaN(timestampMs) && timestampMs > 0) {
+                            const now = Date.now()
+                            pairAge = Math.floor((now - timestampMs) / (1000 * 60 * 60 * 24))
+                            pairAgeHours = Math.floor((now - timestampMs) / (1000 * 60 * 60))
+                        }
+                    } catch (err) {
+                        console.error('[DexScreener] Timestamp parse error:', err)
+                    }
+                }
+                
                 return {
                     liquidity: (mainPair?.liquidity?.usd !== null && mainPair?.liquidity?.usd !== undefined) ? mainPair.liquidity.usd : null,
-                    pairAge: mainPair?.pairCreatedAt ? 
-                        Math.floor((Date.now() - mainPair.pairCreatedAt) / (1000 * 60 * 60 * 24)) : null,
-                    pairAgeHours: mainPair?.pairCreatedAt ?
-                        Math.floor((Date.now() - mainPair.pairCreatedAt) / (1000 * 60 * 60)) : null,
+                    pairAge,
+                    pairAgeHours,
+                    pairCreatedAt: pairTimestamp, // Store raw timestamp for reference
                     txns24h: (mainPair?.txns?.h24 !== null && mainPair?.txns?.h24 !== undefined) ? mainPair.txns.h24 : null,
                     volume24h: (mainPair?.volume?.h24 !== null && mainPair?.volume?.h24 !== undefined) ? mainPair.volume.h24 : null,
                 }
@@ -683,14 +701,34 @@ async function calculateTokenAge(
             return { ageDays, ageHours }
         }
         
-        // Try explorer creation block (approximate)
-        if (explorerData?.creationBlock) {
+        // Try explorer creation block/timestamp (more accurate)
+        // 7-DAY RULE: Try to get contract creation timestamp from explorer
+        if (explorerData?.creationTx || explorerData?.creationBlock) {
             try {
-                // Rough estimate: assume 13s per block for Ethereum
-                const blocksPerDay = (24 * 60 * 60) / 13
-                const currentBlock = 20000000 // Approximate current block
-                const daysOld = (currentBlock - explorerData.creationBlock) / blocksPerDay
-                return { ageDays: Math.floor(daysOld), ageHours: Math.floor(daysOld * 24) }
+                // If we have creation transaction hash, we could fetch the block timestamp
+                // For now, use block number approximation (will be improved with actual timestamp fetch)
+                if (explorerData.creationBlock) {
+                    // Rough estimate: assume 13s per block for Ethereum, 3s for BSC, 2s for Polygon
+                    const blockTimes: Record<string, number> = {
+                        'Ethereum': 13,
+                        'BSC': 3,
+                        'Base': 2,
+                        'Arbitrum': 0.25,
+                        'Polygon': 2,
+                        'Optimism': 2
+                    }
+                    const blockTime = blockTimes[chain] || 13
+                    const blocksPerDay = (24 * 60 * 60) / blockTime
+                    // Approximate current block (this is rough - ideally fetch from explorer)
+                    const currentBlock = 20000000 // Approximate
+                    const creationBlockNum = parseInt(String(explorerData.creationBlock), 10)
+                    if (!isNaN(creationBlockNum) && creationBlockNum > 0) {
+                        const daysOld = (currentBlock - creationBlockNum) / blocksPerDay
+                        if (daysOld > 0) {
+                            return { ageDays: Math.floor(daysOld), ageHours: Math.floor(daysOld * 24) }
+                        }
+                    }
+                }
             } catch (err) {
                 console.error('[TokenAge] Explorer block calc error:', err)
             }
@@ -729,6 +767,73 @@ function isVeryNewToken(tokenAge: { ageDays: number | null; ageHours: number | n
         return false
     } catch (error) {
         console.error('[isVeryNewToken] Error:', error)
+        return false
+    }
+}
+
+// ============================================================================
+// 7-DAY HIGH RISK RULE: Check if token or pair is less than 7 days old
+// ============================================================================
+
+// Blue-chip exception list (canonical contracts that should skip 7-day rule)
+const BLUECHIP_EXCEPTION_ADDRESSES: Record<string, boolean> = {
+    // WETH
+    '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': true, // Ethereum
+    '0x4200000000000000000000000000000000000006': true, // Base/Optimism
+    '0x82af49447d8a07e3bd95bd0d56f35241523fbab1': true, // Arbitrum
+    '0x7ceb23fd6bc0add59e62ac25578270cff1b9f619': true, // Polygon
+    // USDC
+    '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': true, // Ethereum
+    '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913': true, // Base
+    '0xff970a61a04b1ca14834a43f5de4533ebddb5cc8': true, // Arbitrum
+    '0x7f5c764cbc14f9669b88837ca1490cca17c31607': true, // Optimism
+    '0x2791bca1f2de4661ed88a30c99a7a9449aa84174': true, // Polygon
+    '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d': true, // BSC
+    // USDT
+    '0xdac17f958d2ee523a2206206994597c13d831ec7': true, // Ethereum
+    '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9': true, // Arbitrum
+    '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58': true, // Optimism
+    '0xc2132d05d31c914a87c6611c10748aeb04b58e8f': true, // Polygon
+    '0x55d398326f99059ff775485246999027b3197955': true, // BSC
+    // DAI
+    '0x6b175474e89094c44da98b954eedeac495271d0f': true, // Ethereum
+    '0x50c5725949a6f0c72e6c4a641f24049a917db0cb': true, // Base
+    '0xda10009cbd5d07dd0cecc66161fc93d7c9000da1': true, // Arbitrum/Optimism
+    '0x8f3cf7ad23cd3cadbd9735aff958023239c6a063': true, // Polygon
+    '0x1af3f329e8be154074d8769d1ffa4ee058b1dbc3': true, // BSC
+    // WBTC
+    '0x2260fac5e5542a773aa44fbcfedf7c193bc2c599': true, // Ethereum
+    '0x1bfd67037b42cf73acf2047067bd4f2c47d9bfd6': true, // Polygon
+    '0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c': true, // BSC
+}
+
+function isTokenLessThan7DaysOld(
+    tokenAgeDays: number | null,
+    pairAgeDays: number | null,
+    address: string
+): boolean {
+    try {
+        // Blue-chip exception: Skip 7-day rule for canonical contracts
+        const normalizedAddress = address.toLowerCase()
+        if (BLUECHIP_EXCEPTION_ADDRESSES[normalizedAddress]) {
+            return false
+        }
+        
+        // 7-DAY RULE: If either pair age OR token age is < 7 days, trigger HIGH RISK
+        // Check pair age first (most reliable for new launches)
+        if (pairAgeDays !== null && pairAgeDays !== undefined && pairAgeDays < 7) {
+            return true
+        }
+        
+        // Check token contract age
+        if (tokenAgeDays !== null && tokenAgeDays !== undefined && tokenAgeDays < 7) {
+            return true
+        }
+        
+        return false
+    } catch (error) {
+        console.error('[isTokenLessThan7DaysOld] Error:', error)
+        // On error, be conservative - don't trigger false positives
         return false
     }
 }
@@ -882,7 +987,8 @@ function calculateHealthScore(
     addressType: string,
     address: string,
     symbol: string | null,
-    chain: string
+    chain: string,
+    pairAgeDays: number | null = null
 ): { score: number; penalties: Array<{ reason: string; points: number }> } {
     let score = 100
     const penalties: Array<{ reason: string; points: number }> = []
@@ -890,96 +996,126 @@ function calculateHealthScore(
     const isCore = isCoreToken(address)
     const isWrapped = isWrappedNativeToken(address, symbol, chain)
     
+    // ============================================================================
+    // 7-DAY HIGH RISK RULE: Override all scoring for tokens/pairs < 7 days old
+    // ============================================================================
+    const isLessThan7Days = isTokenLessThan7DaysOld(tokenAge, pairAgeDays, address)
+    if (isLessThan7Days) {
+        // Force score ≤ 30 for tokens/pairs < 7 days old
+        // Skip all positive scoring bonuses - this is a critical safety rule
+        score = 30
+        penalties.push({ 
+            reason: 'Token or trading pair created less than 7 days ago – extremely high rug risk period', 
+            points: 70 
+        })
+        // Still check for critical security flags (honeypot, etc.) but don't add to score
+        // The 7-day rule already sets score to 30, which is below HIGH RISK threshold
+    }
+    
     // CRITICAL FLAGS (immediate high risk) - apply to ALL tokens
+    // Note: For tokens < 7 days, these flags are still detected but score is already capped at 30
     if (securityFlags.honeypot) {
         penalties.push({ reason: 'Honeypot behavior detected', points: 50 })
-        score -= 50
+        if (!isLessThan7Days) {
+            score -= 50
+        }
     }
     
     if (securityFlags.mintAuthority) {
         penalties.push({ reason: 'Mint authority still active (supply inflation risk)', points: 30 })
-        score -= 30
+        if (!isLessThan7Days) {
+            score -= 30
+        }
     }
     
     if (securityFlags.freezeAuthority) {
         penalties.push({ reason: 'Freeze authority active (can freeze wallets)', points: 25 })
-        score -= 25
+        if (!isLessThan7Days) {
+            score -= 25
+        }
     }
     
     if (securityFlags.ownerPrivileges) {
         penalties.push({ reason: 'Dangerous owner privileges detected', points: 30 })
-        score -= 30
-    }
-    
-    // LIQUIDITY & AGE - Skip for core/wrapped tokens
-    if (securityFlags.noLiquidity && !isCore && !isWrapped) {
-        penalties.push({ reason: 'No liquidity detected or insufficient liquidity', points: 25 })
-        score -= 25
-    }
-    
-    // Token age penalties - Skip for core/wrapped tokens (they're established)
-    if (!isCore && !isWrapped) {
-        if (tokenAge !== null && tokenAge < 1) {
-            penalties.push({ reason: 'Extremely new token (<24 hours) - high rug risk', points: 35 })
-            score -= 35
-        } else if (tokenAge !== null && tokenAge < 7) {
-            penalties.push({ reason: 'Very new token (<7 days) - elevated risk', points: 20 })
-            score -= 20
-        } else if (tokenAge === null) {
-            // Only penalize if we expected age but didn't get it (not for wrapped natives)
-            penalties.push({ reason: 'Token age unknown - cannot verify launch date', points: 10 })
-            score -= 10
+        if (!isLessThan7Days) {
+            score -= 30
         }
     }
     
-    // CONTRACT & VERIFICATION - Skip for core/wrapped tokens
-    if (securityFlags.unverifiedContract && !isCore && !isWrapped) {
-        penalties.push({ reason: 'Contract not verified on block explorer', points: 5 })
-        score -= 5
+    // Skip liquidity/age penalties if 7-day rule already triggered
+    if (!isLessThan7Days) {
+        // LIQUIDITY & AGE - Skip for core/wrapped tokens
+        if (securityFlags.noLiquidity && !isCore && !isWrapped) {
+            penalties.push({ reason: 'No liquidity detected or insufficient liquidity', points: 25 })
+            score -= 25
+        }
+        
+        // Token age penalties - Skip for core/wrapped tokens (they're established)
+        // Note: <7 day tokens are already handled above, so this is for older tokens
+        if (!isCore && !isWrapped) {
+            if (tokenAge !== null && tokenAge < 1) {
+                penalties.push({ reason: 'Extremely new token (<24 hours) - high rug risk', points: 35 })
+                score -= 35
+            } else if (tokenAge === null) {
+                // Only penalize if we expected age but didn't get it (not for wrapped natives)
+                penalties.push({ reason: 'Token age unknown - cannot verify launch date', points: 10 })
+                score -= 10
+            }
+        }
     }
     
-    if (securityFlags.proxyUpgradeable) {
-        penalties.push({ reason: 'Upgradeable proxy contract (owner can change logic)', points: 10 })
-        score -= 10
+    // Skip other penalties if 7-day rule already triggered
+    if (!isLessThan7Days) {
+        // CONTRACT & VERIFICATION - Skip for core/wrapped tokens
+        if (securityFlags.unverifiedContract && !isCore && !isWrapped) {
+            penalties.push({ reason: 'Contract not verified on block explorer', points: 5 })
+            score -= 5
+        }
+        
+        if (securityFlags.proxyUpgradeable) {
+            penalties.push({ reason: 'Upgradeable proxy contract (owner can change logic)', points: 10 })
+            score -= 10
+        }
+        
+        if (securityFlags.blacklistAuthority) {
+            penalties.push({ reason: 'Blacklist function detected', points: 20 })
+            score -= 20
+        }
+        
+        // MARKET PRESENCE - Skip for core/wrapped tokens
+        if (securityFlags.notListed && !isCore && !isWrapped) {
+            penalties.push({ reason: 'Not listed on major DEXs or explorers', points: 15 })
+            score -= 15
+        }
+        
+        // DATA CONFIDENCE PENALTY (GLOBAL RULE 2 & 10: Cap at -10 total)
+        // Missing data can only increase risk by one level, never force HIGH RISK
+        let missingDataPenalty = 0
+        if (dataConfidence.level === 'LOW' && !isCore && !isWrapped) {
+            missingDataPenalty = 10
+        } else if (dataConfidence.level === 'MEDIUM' && !isCore && !isWrapped) {
+            missingDataPenalty = 5
+        }
+        
+        // GLOBAL RULE 10: Cap missing data penalty at -10 points total
+        if (missingDataPenalty > 0) {
+            penalties.push({ reason: 'Some market or explorer data unavailable', points: missingDataPenalty })
+            score -= missingDataPenalty
+        }
+        
+        // SOLANA LIMITED MODE
+        if (addressType === 'SOLANA') {
+            penalties.push({ reason: 'Solana security checks are limited', points: 15 })
+            score -= 15
+        }
     }
     
-    if (securityFlags.blacklistAuthority) {
-        penalties.push({ reason: 'Blacklist function detected', points: 20 })
-        score -= 20
-    }
-    
-    // MARKET PRESENCE - Skip for core/wrapped tokens
-    if (securityFlags.notListed && !isCore && !isWrapped) {
-        penalties.push({ reason: 'Not listed on major DEXs or explorers', points: 15 })
-        score -= 15
-    }
-    
-    // DATA CONFIDENCE PENALTY (GLOBAL RULE 2 & 10: Cap at -10 total)
-    // Missing data can only increase risk by one level, never force HIGH RISK
-    let missingDataPenalty = 0
-    if (dataConfidence.level === 'LOW' && !isCore && !isWrapped) {
-        missingDataPenalty = 10
-    } else if (dataConfidence.level === 'MEDIUM' && !isCore && !isWrapped) {
-        missingDataPenalty = 5
-    }
-    
-    // GLOBAL RULE 10: Cap missing data penalty at -10 points total
-    if (missingDataPenalty > 0) {
-        penalties.push({ reason: 'Some market or explorer data unavailable', points: missingDataPenalty })
-        score -= missingDataPenalty
-    }
-    
-    // SOLANA LIMITED MODE
-    if (addressType === 'SOLANA') {
-        penalties.push({ reason: 'Solana security checks are limited', points: 15 })
-        score -= 15
-    }
-    
-    // Clamp score
+    // Clamp score (but 7-day rule already sets it to 30, so this won't override)
     score = Math.max(0, Math.min(100, score))
     
     // OVERRIDE RULES: Missing data caps (REDUCED - only for non-core tokens)
-    if (!isCore && !isWrapped) {
+    // Skip if 7-day rule triggered (score already at 30)
+    if (!isLessThan7Days && !isCore && !isWrapped) {
         if (dataConfidence.level === 'LOW') {
             // Don't cap as aggressively - allow up to 70 instead of 55
             score = Math.min(score, 70)
@@ -988,12 +1124,11 @@ function calculateHealthScore(
         }
     }
     
-    // New token caps (only for non-core tokens)
-    if (!isCore && !isWrapped) {
+    // New token caps (only for non-core tokens, and only if 7-day rule didn't trigger)
+    // Note: <7 day tokens are already handled by 7-day rule above
+    if (!isLessThan7Days && !isCore && !isWrapped) {
         if (tokenAge !== null && tokenAge < 1) {
             score = Math.min(score, 40)
-        } else if (tokenAge !== null && tokenAge < 7) {
-            score = Math.min(score, 65)
         }
     }
     
@@ -1010,10 +1145,21 @@ function determineRiskLevel(
     dataConfidence: DataConfidence,
     address: string,
     symbol: string | null,
-    chain: string
+    chain: string,
+    tokenAgeDays: number | null = null,
+    pairAgeDays: number | null = null
 ): 'LOW' | 'MEDIUM' | 'HIGH' {
     const isCore = isCoreToken(address)
     const isWrapped = isWrappedNativeToken(address, symbol, chain)
+    
+    // ============================================================================
+    // 7-DAY HIGH RISK RULE: Force HIGH RISK for tokens/pairs < 7 days old
+    // ============================================================================
+    const isLessThan7Days = isTokenLessThan7DaysOld(tokenAgeDays, pairAgeDays, address)
+    if (isLessThan7Days) {
+        // Override all other logic - tokens/pairs < 7 days are ALWAYS HIGH RISK
+        return 'HIGH'
+    }
     
     // OVERRIDE RULES: Critical flags force HIGH risk (for ALL tokens)
     if (securityFlags.honeypot || securityFlags.mintAuthority || securityFlags.ownerPrivileges) {
@@ -1056,9 +1202,27 @@ function generateVerdict(
     securityFlags: SecurityFlags,
     dataConfidence: DataConfidence,
     tokenAge: number | null,
-    addressType: string
+    addressType: string,
+    tokenAgeDays: number | null = null,
+    pairAgeDays: number | null = null,
+    address: string = ''
 ): { verdict: string; warnings: string[] } {
     const warnings: string[] = []
+    
+    // ============================================================================
+    // 7-DAY HIGH RISK RULE: Specific verdict for tokens/pairs < 7 days old
+    // ============================================================================
+    const isLessThan7Days = isTokenLessThan7DaysOld(tokenAgeDays, pairAgeDays, address)
+    if (isLessThan7Days && riskLevel === 'HIGH') {
+        return {
+            verdict: '🔴 HIGH RISK — Token or trading pair is less than 7 days old. Most rugs and malicious launches occur in the first week.',
+            warnings: [
+                'Token or trading pair created less than 7 days ago – extremely high rug risk period',
+                'Most rug pulls and exit scams happen within the first week of launch',
+                'Wait at least 7 days and monitor on-chain activity before considering this token'
+            ]
+        }
+    }
     
     // CRITICAL ISSUES (specific verdicts)
     if (securityFlags.honeypot) {
@@ -1083,12 +1247,28 @@ function generateVerdict(
     }
     
     // DATA QUALITY ISSUES
+    // 7-DAY RULE: If age is unknown, add specific warning
+    if (tokenAgeDays === null && pairAgeDays === null) {
+        warnings.push('Unable to determine token age – treat as high risk')
+    }
+    
     if (dataConfidence.level === 'LOW') {
+        const lowDataWarnings = [`Only ${dataConfidence.percentage}% of security checks could be performed`]
+        if (tokenAgeDays === null && pairAgeDays === null) {
+            lowDataWarnings.push('Unable to determine token age – treat as high risk')
+        }
         return {
             verdict: '⚠️ INSUFFICIENT DATA – Risk cannot be accurately determined.',
-            warnings: [`Only ${dataConfidence.percentage}% of security checks could be performed`]
+            warnings: lowDataWarnings
         }
     }
+    
+    // ============================================================================
+    // 7-DAY HIGH RISK RULE: Specific verdict for tokens/pairs < 7 days old
+    // ============================================================================
+    // Note: This check should happen early, before other verdicts
+    // The riskLevel parameter should already be HIGH if this rule triggered,
+    // but we add the specific verdict here for clarity
     
     // NEW TOKEN WARNINGS
     if (tokenAge !== null && tokenAge !== undefined && tokenAge < 1) {
@@ -1523,7 +1703,11 @@ async function analyzeToken(address: string): Promise<string> {
             const pairAgeHours = (dexData && dexData.pairAgeHours !== null && dexData.pairAgeHours !== undefined) ? dexData.pairAgeHours : null
             const isVeryNew = isVeryNewToken(tokenAgeResult, pairAgeHours, dexData)
             
-            // Calculate score
+            // 7-DAY RULE: Extract pair age for scoring
+            const pairAgeDays = (dexData && dexData.pairAge !== null && dexData.pairAge !== undefined) ? dexData.pairAge : null
+            const tokenAgeDays = tokenData.tokenAge
+            
+            // Calculate score (7-day rule is handled inside calculateHealthScore)
             const { score, penalties } = calculateHealthScore(
                 securityFlags,
                 dataConfidence,
@@ -1531,15 +1715,22 @@ async function analyzeToken(address: string): Promise<string> {
                 addressType,
                 address,
                 tokenData.symbol,
-                tokenData.chain
+                tokenData.chain,
+                pairAgeDays
             )
             
-            // GLOBAL RULE 3: New token handling
+            // GLOBAL RULE 3: New token handling (but 7-day rule takes precedence)
             let finalScore = score
             let finalRiskLevel: 'LOW' | 'MEDIUM' | 'HIGH'
             
-            if (isVeryNew) {
-                // Very new tokens: MEDIUM risk, 60-75 score
+            // 7-DAY RULE: Check if token/pair is < 7 days old (overrides other logic)
+            const isLessThan7Days = isTokenLessThan7DaysOld(tokenAgeDays, pairAgeDays, address)
+            if (isLessThan7Days) {
+                // 7-day rule already set score to 30 in calculateHealthScore
+                finalScore = Math.min(30, score) // Ensure score ≤ 30
+                finalRiskLevel = 'HIGH' // Force HIGH RISK
+            } else if (isVeryNew) {
+                // Very new tokens: MEDIUM risk, 60-75 score (only if not < 7 days)
                 finalScore = Math.max(60, Math.min(75, score))
                 finalRiskLevel = 'MEDIUM'
             } else if ((isCore || isWrapped || isBluechip) && !securityFlags.honeypot && !securityFlags.ownerPrivileges && !securityFlags.mintAuthority && !securityFlags.blacklistAuthority) {
@@ -1548,20 +1739,27 @@ async function analyzeToken(address: string): Promise<string> {
                 finalRiskLevel = isBluechip ? 'MEDIUM' : 'LOW'
             } else {
                 // GLOBAL RULE 6: HIGH RISK only for real scams
-                finalRiskLevel = determineRiskLevel(finalScore, securityFlags, dataConfidence, address, tokenData.symbol, tokenData.chain)
+                finalRiskLevel = determineRiskLevel(finalScore, securityFlags, dataConfidence, address, tokenData.symbol, tokenData.chain, tokenAgeDays, pairAgeDays)
             }
             
-            // Generate verdict
+            // Generate verdict (pass age data for 7-day rule check)
             let { verdict, warnings } = generateVerdict(
                 finalRiskLevel,
                 securityFlags,
                 dataConfidence,
                 tokenData.tokenAge,
-                addressType
+                addressType,
+                tokenAgeDays,
+                pairAgeDays,
+                address
             )
             
-            // GLOBAL RULE 3: Override verdict for very new tokens
-            if (isVeryNew) {
+            // 7-DAY RULE: Override verdict for tokens/pairs < 7 days (already handled in generateVerdict)
+            // GLOBAL RULE 3: Override verdict for very new tokens (only if not < 7 days)
+            if (isLessThan7Days) {
+                // Verdict already set by generateVerdict for 7-day rule
+                // No need to override
+            } else if (isVeryNew) {
                 verdict = '⚠️ MEDIUM RISK – Token is very new. Market and liquidity data still forming. Review carefully.'
                 warnings = ['Token created less than 24 hours ago or pair created less than 1 hour ago']
             } else if ((isCore || isWrapped || isBluechip) && !securityFlags.honeypot && !securityFlags.ownerPrivileges && !securityFlags.mintAuthority && !securityFlags.blacklistAuthority) {
