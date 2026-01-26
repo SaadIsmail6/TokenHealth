@@ -530,10 +530,35 @@ async function fetchDexscreenerData(address: string): Promise<any> {
                 
                 if (!data?.pairs || !Array.isArray(data.pairs) || data.pairs.length === 0) return null
                 
-                // Get the most liquid pair
-                const mainPair = data.pairs.sort((a: any, b: any) => 
-                    ((b?.liquidity?.usd) || 0) - ((a?.liquidity?.usd) || 0)
-                )[0]
+                // METADATA FIX: For Solana/EVM, find pair where input address matches baseToken or quoteToken
+                // This ensures we get the correct token metadata for the address being analyzed
+                const normalizedInputAddress = address.toLowerCase()
+                let mainPair = null
+                
+                // First, try to find a pair where the input address matches baseToken.address
+                const matchingBasePair = data.pairs.find((pair: any) => {
+                    const baseAddr = pair?.baseToken?.address?.toLowerCase()
+                    return baseAddr === normalizedInputAddress
+                })
+                
+                if (matchingBasePair) {
+                    mainPair = matchingBasePair
+                } else {
+                    // If no exact match, try quoteToken
+                    const matchingQuotePair = data.pairs.find((pair: any) => {
+                        const quoteAddr = pair?.quoteToken?.address?.toLowerCase()
+                        return quoteAddr === normalizedInputAddress
+                    })
+                    
+                    if (matchingQuotePair) {
+                        mainPair = matchingQuotePair
+                    } else {
+                        // Fallback: Get the most liquid pair
+                        mainPair = data.pairs.sort((a: any, b: any) => 
+                            ((b?.liquidity?.usd) || 0) - ((a?.liquidity?.usd) || 0)
+                        )[0]
+                    }
+                }
                 
                 if (!mainPair) return null
                 
@@ -561,6 +586,16 @@ async function fetchDexscreenerData(address: string): Promise<any> {
                 const baseToken = mainPair?.baseToken || null
                 const quoteToken = mainPair?.quoteToken || null
                 
+                // METADATA FIX: Determine which token in the pair matches the input address
+                // Use that token's metadata (baseToken if input matches baseToken.address, otherwise quoteToken)
+                const baseTokenAddress = baseToken?.address?.toLowerCase() || null
+                const quoteTokenAddress = quoteToken?.address?.toLowerCase() || null
+                const isBaseToken = baseTokenAddress === normalizedInputAddress
+                const isQuoteToken = quoteTokenAddress === normalizedInputAddress
+                
+                // Select the token that matches the input address (prefer baseToken if both match)
+                const matchingToken = isBaseToken ? baseToken : (isQuoteToken ? quoteToken : baseToken)
+                
                 return {
                     liquidity: (mainPair?.liquidity?.usd !== null && mainPair?.liquidity?.usd !== undefined) ? mainPair.liquidity.usd : null,
                     pairAge,
@@ -578,6 +613,12 @@ async function fetchDexscreenerData(address: string): Promise<any> {
                         name: quoteToken?.name || null,
                         symbol: quoteToken?.symbol || null,
                         address: quoteToken?.address || null
+                    } : null,
+                    // METADATA FIX: Include the matching token (the one that matches input address)
+                    matchingToken: matchingToken ? {
+                        name: matchingToken?.name || null,
+                        symbol: matchingToken?.symbol || null,
+                        address: matchingToken?.address || null
                     } : null
                 }
             } catch (err) {
@@ -846,11 +887,18 @@ function isTokenLessThan7DaysOld(
             return true
         }
         
+        // NEW PAIR RULE: If BOTH ages are null/unknown, treat as new pair = HIGH RISK
+        // This catches brand new pairs where age data isn't available yet
+        if ((pairAgeDays === null || pairAgeDays === undefined) && 
+            (tokenAgeDays === null || tokenAgeDays === undefined)) {
+            return true // Unknown age = treat as new = HIGH RISK
+        }
+        
         return false
     } catch (error) {
         console.error('[isTokenLessThan7DaysOld] Error:', error)
-        // On error, be conservative - don't trigger false positives
-        return false
+        // On error, be conservative - treat as potentially new = HIGH RISK
+        return true
     }
 }
 
@@ -864,7 +912,8 @@ function calculateDataConfidence(
     explorerData: any,
     dexData: any,
     addressType: string,
-    cgData?: any
+    cgData?: any,
+    solscanData?: any
 ): DataConfidence & { apiFailures: string[] } {
     const checks = []
     const missing: string[] = []
@@ -903,8 +952,11 @@ function calculateDataConfidence(
         checks.push({ field: 'Token Age', available: tokenData.tokenAge !== null && tokenData.tokenAge !== undefined })
         checks.push({ field: 'Liquidity', available: tokenData.liquidity !== null && tokenData.liquidity !== undefined })
         checks.push({ field: 'Holder Count', available: tokenData.holderCount !== null && tokenData.holderCount !== undefined })
-        checks.push({ field: 'Mint Authority', available: dexData !== null && dexData !== undefined })
-        checks.push({ field: 'Freeze Authority', available: dexData !== null && dexData !== undefined })
+        // METADATA FIX: For Solana, mint/freeze authority comes from solscanData, not dexData
+        checks.push({ field: 'Mint Authority', available: solscanData !== null && solscanData !== undefined && solscanData.mintAuthority !== null && solscanData.mintAuthority !== undefined })
+        checks.push({ field: 'Freeze Authority', available: solscanData !== null && solscanData !== undefined && solscanData.freezeAuthority !== null && solscanData.freezeAuthority !== undefined })
+        // Add DexScreener data check for Solana
+        checks.push({ field: 'DexScreener Data', available: dexData !== null && dexData !== undefined })
     }
     
     const successfulChecks = checks.filter(c => c.available).length
@@ -1013,15 +1065,18 @@ function calculateHealthScore(
     const isWrapped = isWrappedNativeToken(address, symbol, chain)
     
     // ============================================================================
-    // 7-DAY HIGH RISK RULE: Override all scoring for tokens/pairs < 7 days old
+    // 7-DAY HIGH RISK RULE: Override all scoring for tokens/pairs < 7 days old OR unknown age
     // ============================================================================
     const isLessThan7Days = isTokenLessThan7DaysOld(tokenAge, pairAgeDays, address)
     if (isLessThan7Days) {
-        // Force score ≤ 30 for tokens/pairs < 7 days old
+        // Force score ≤ 30 for tokens/pairs < 7 days old OR unknown age (new pairs)
         // Skip all positive scoring bonuses - this is a critical safety rule
         score = 30
+        const ageReason = (pairAgeDays === null && tokenAge === null) 
+            ? 'New trading pair – age unknown, extremely high rug risk'
+            : 'Token or trading pair created less than 7 days ago – extremely high rug risk period'
         penalties.push({ 
-            reason: 'Token or trading pair created less than 7 days ago – extremely high rug risk period', 
+            reason: ageReason, 
             points: 70 
         })
         // Still check for critical security flags (honeypot, etc.) but don't add to score
@@ -1226,14 +1281,22 @@ function generateVerdict(
     const warnings: string[] = []
     
     // ============================================================================
-    // 7-DAY HIGH RISK RULE: Specific verdict for tokens/pairs < 7 days old
+    // 7-DAY HIGH RISK RULE: Specific verdict for tokens/pairs < 7 days old OR unknown age
     // ============================================================================
     const isLessThan7Days = isTokenLessThan7DaysOld(tokenAgeDays, pairAgeDays, address)
     if (isLessThan7Days && riskLevel === 'HIGH') {
+        const isUnknownAge = (pairAgeDays === null && tokenAgeDays === null)
+        const verdictText = isUnknownAge
+            ? '🔴 HIGH RISK — New trading pair detected. Age unknown – extremely high rug risk.'
+            : '🔴 HIGH RISK — Token or trading pair is less than 7 days old. Most rugs and malicious launches occur in the first week.'
+        const warningText = isUnknownAge
+            ? 'New trading pair – age cannot be determined, extremely high rug risk'
+            : 'Token or trading pair created less than 7 days ago – extremely high rug risk period'
+        
         return {
-            verdict: '🔴 HIGH RISK — Token or trading pair is less than 7 days old. Most rugs and malicious launches occur in the first week.',
+            verdict: verdictText,
             warnings: [
-                'Token or trading pair created less than 7 days ago – extremely high rug risk period',
+                warningText,
                 'Most rug pulls and exit scams happen within the first week of launch',
                 'Wait at least 7 days and monitor on-chain activity before considering this token'
             ]
@@ -1604,11 +1667,16 @@ async function analyzeToken(address: string): Promise<string> {
             const normalizedAddress = address.toLowerCase()
             const coreToken = CORE_TOKENS[normalizedAddress]
             
-            // METADATA FIX: Prioritize DexScreener baseToken for Solana pairs
-            // First read from DexScreener pair.baseToken, then Solana token metadata
+            // METADATA FIX: Prioritize DexScreener matchingToken (token that matches input address)
+            // First try matchingToken (the token in the pair that matches the input address)
+            // Then fall back to baseToken, then Solana token metadata
+            const dexMatchingToken = dexData?.matchingToken || null
             const dexBaseToken = dexData?.baseToken || null
-            const dexBaseName = (dexBaseToken && dexBaseToken.name && dexBaseToken.name.trim()) ? dexBaseToken.name.trim() : null
-            const dexBaseSymbol = (dexBaseToken && dexBaseToken.symbol && dexBaseToken.symbol.trim()) ? dexBaseToken.symbol.trim() : null
+            
+            // Use matchingToken if available (most accurate), otherwise use baseToken
+            const dexToken = dexMatchingToken || dexBaseToken
+            const dexTokenName = (dexToken && dexToken.name && dexToken.name.trim()) ? dexToken.name.trim() : null
+            const dexTokenSymbol = (dexToken && dexToken.symbol && dexToken.symbol.trim()) ? dexToken.symbol.trim() : null
             
             // Safe null checks for Solana data
             const pairAge = (dexData && dexData.pairAge !== null && dexData.pairAge !== undefined) ? dexData.pairAge : null
@@ -1616,16 +1684,15 @@ async function analyzeToken(address: string): Promise<string> {
             const holderCount = (solscanData && solscanData.holderCount !== null && solscanData.holderCount !== undefined) ? solscanData.holderCount : null
             
             // METADATA FIX: Solana token name/symbol extraction with fallbacks
-            // Priority: CORE > DexScreener baseToken > Solscan > Fallback
+            // Priority: CORE > DexScreener matchingToken/baseToken > Solscan > Fallback
             let solanaTokenName = coreToken?.name 
-                || dexBaseName 
+                || dexTokenName 
                 || (solscanData?.name && solscanData.name.trim() ? solscanData.name.trim() : null)
-                || dexBaseSymbol // If name missing but symbol exists, use symbol as name
-                || (address.length > 8 ? `${address.substring(0, 4)}...${address.substring(address.length - 4)}` : address) // Shortened address
-                || 'New Token'
+                || dexTokenSymbol // If name missing but symbol exists, use symbol as name
+                || 'New Token' // Never use shortened address unless absolutely necessary
             
             let solanaTokenSymbol = coreToken?.symbol 
-                || dexBaseSymbol 
+                || dexTokenSymbol 
                 || (solscanData?.symbol && solscanData.symbol.trim() ? solscanData.symbol.trim() : null)
                 || 'NEW' // Never show "Unknown" or "UNKNOWN"
             
@@ -1653,14 +1720,15 @@ async function analyzeToken(address: string): Promise<string> {
             }
         }
         
-        // Calculate data confidence
+        // Calculate data confidence (pass solscanData for Solana)
         const dataConfidence = calculateDataConfidence(
             tokenData,
             goPlusData,
             explorerData,
             dexData,
             addressType,
-            cgData
+            cgData,
+            solscanData
         )
         
         // Detect security flags (with core/wrapped detection)
@@ -1732,14 +1800,15 @@ async function analyzeToken(address: string): Promise<string> {
                 }
             }
             
-            // Calculate data confidence (with improved accuracy)
+            // Calculate data confidence (with improved accuracy, pass solscanData for Solana)
             const dataConfidence = calculateDataConfidence(
                 tokenData,
                 goPlusData,
                 explorerData,
                 dexData,
                 addressType,
-                cgData
+                cgData,
+                solscanData
             )
             
             // Detect security flags
