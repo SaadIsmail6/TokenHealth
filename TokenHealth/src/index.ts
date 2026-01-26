@@ -1253,8 +1253,8 @@ function calculateHealthScore(
         score -= 15
     }
     
-    // Clamp score
-    score = Math.max(0, Math.min(100, score))
+    // Clamp score - NO TOKEN SHOULD EVER BE 100/100 (safety principle)
+    score = Math.max(0, Math.min(95, score))
     
     // FAIL-CLOSED DESIGN: Missing data caps score (only for non-core tokens)
     if (!isCore && !isWrapped) {
@@ -1945,8 +1945,8 @@ async function analyzeToken(address: string): Promise<string> {
                 finalScore = Math.max(60, Math.min(75, score))
                 finalRiskLevel = 'MEDIUM'
             } else if ((isCore || isWrapped || isBluechip) && !securityFlags.honeypot && !securityFlags.ownerPrivileges && !securityFlags.mintAuthority && !securityFlags.blacklistAuthority) {
-                // GLOBAL RULE 4: Bluechip protection
-                finalScore = Math.max(score, isBluechip ? 75 : 85)
+                // GLOBAL RULE 4: Bluechip protection (but cap at 95 - no token should be 100/100)
+                finalScore = Math.min(95, Math.max(score, isBluechip ? 75 : 85))
                 finalRiskLevel = isBluechip ? 'MEDIUM' : 'LOW'
             } else {
                 // GLOBAL RULE 6: HIGH RISK only for real scams
@@ -1993,6 +1993,9 @@ async function analyzeToken(address: string): Promise<string> {
                     warnings = []
                 }
             }
+            
+            // FINAL SAFETY CLAMP: No token should ever be 100/100 (safety principle)
+            finalScore = Math.min(95, finalScore)
             
             // Build analysis
             const analysis: RiskAnalysis = {
