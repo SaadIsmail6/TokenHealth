@@ -1717,7 +1717,7 @@ async function analyzeToken(address: string): Promise<string> {
             const assumedLiquidity = (isBluechip || coreToken?.isWrappedNative) ? 1000000 : null
             
             // Use whitelist age when API age is missing (for established tokens)
-            const whitelistEntry = WELL_KNOWN_TOKENS[normalizedAddress]
+            // whitelistEntry is already declared above at line 1680
             const effectiveTokenAge = tokenAge !== null && tokenAge !== undefined 
                 ? tokenAge 
                 : (coreToken?.isWrappedNative ? 1100 : (whitelistEntry?.age || (bluechipToken ? 1000 : null)))
