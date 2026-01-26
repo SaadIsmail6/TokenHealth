@@ -1831,7 +1831,7 @@ async function analyzeToken(address: string): Promise<string> {
         // Continue with analysis using tokenData (even if partial)
         try {
             // Calculate data confidence (removed CoinGecko dependency)
-            const dataConfidence = calculateDataConfidence(
+            let dataConfidence = calculateDataConfidence(
                 tokenData,
                 goPlusData,
                 explorerData,
