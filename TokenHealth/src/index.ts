@@ -569,6 +569,14 @@ function isCoreToken(address: string): boolean {
     return !!CORE_TOKENS[address.toLowerCase()]
 }
 
+function isExtendedBluechip(address: string): boolean {
+    return !!EXTENDED_BLUECHIP_LIST[address.toLowerCase()]
+}
+
+function isWellKnownToken(address: string): boolean {
+    return !!WELL_KNOWN_TOKENS[address.toLowerCase()]
+}
+
 // ============================================================================
 // API DATA FETCHERS
 // ============================================================================
@@ -937,9 +945,38 @@ function isTokenLessThan7DaysOld(
     address: string
 ): boolean {
     try {
-        // Blue-chip exception: Skip 7-day rule for canonical contracts
         const normalizedAddress = address.toLowerCase()
-        if (BLUECHIP_EXCEPTION_ADDRESSES[normalizedAddress]) {
+        
+        // BLUECHIP/WHITELIST EXCEPTION: Skip 7-day rule for established tokens
+        // If token is in whitelist/bluechip/core lists, use whitelist age data
+        if (BLUECHIP_EXCEPTION_ADDRESSES[normalizedAddress] || 
+            isCoreToken(address) || 
+            isExtendedBluechip(address) || 
+            isWellKnownToken(address)) {
+            
+            // For whitelisted tokens, if age is unknown, use whitelist age data
+            const whitelistEntry = WELL_KNOWN_TOKENS[normalizedAddress]
+            const coreToken = CORE_TOKENS[normalizedAddress]
+            const bluechipToken = EXTENDED_BLUECHIP_LIST[normalizedAddress]
+            
+            // Use whitelist age if available and API age is missing
+            const effectiveTokenAge = tokenAgeDays !== null && tokenAgeDays !== undefined 
+                ? tokenAgeDays 
+                : (whitelistEntry?.age || coreToken ? 1000 : bluechipToken ? 1000 : null)
+            
+            const effectivePairAge = pairAgeDays !== null && pairAgeDays !== undefined 
+                ? pairAgeDays 
+                : null
+            
+            // Only trigger 7-day rule if effective age is actually < 7 days
+            if (effectiveTokenAge !== null && effectiveTokenAge < 7) {
+                return true
+            }
+            if (effectivePairAge !== null && effectivePairAge < 7) {
+                return true
+            }
+            
+            // For whitelisted tokens with unknown age, assume they're established (NOT new)
             return false
         }
         
@@ -954,11 +991,12 @@ function isTokenLessThan7DaysOld(
             return true
         }
         
-        // NEW PAIR RULE: If BOTH ages are null/unknown, treat as new pair = HIGH RISK
+        // NEW PAIR RULE: If BOTH ages are null/unknown AND token is NOT whitelisted, treat as new = HIGH RISK
         // This catches brand new pairs where age data isn't available yet
+        // BUT: Only apply this rule to non-whitelisted tokens
         if ((pairAgeDays === null || pairAgeDays === undefined) && 
             (tokenAgeDays === null || tokenAgeDays === undefined)) {
-            return true // Unknown age = treat as new = HIGH RISK
+            return true // Unknown age = treat as new = HIGH RISK (only for non-whitelisted tokens)
         }
         
         return false
@@ -1675,8 +1713,14 @@ async function analyzeToken(address: string): Promise<string> {
                 || 'NEW' // Never show "UNKNOWN"
             
             // GLOBAL RULE 4: Bluechip protection - assume liquidity exists
-            const isBluechip = isExtendedBluechip(address)
+            const isBluechip = isExtendedBluechip(tokenToAnalyze)
             const assumedLiquidity = (isBluechip || coreToken?.isWrappedNative) ? 1000000 : null
+            
+            // Use whitelist age when API age is missing (for established tokens)
+            const whitelistEntry = WELL_KNOWN_TOKENS[normalizedAddress]
+            const effectiveTokenAge = tokenAge !== null && tokenAge !== undefined 
+                ? tokenAge 
+                : (coreToken?.isWrappedNative ? 1100 : (whitelistEntry?.age || (bluechipToken ? 1000 : null)))
             
             // Safe null checks for all fields
             const pairAge = (dexData && dexData.pairAge !== null && dexData.pairAge !== undefined) ? dexData.pairAge : null
@@ -1690,7 +1734,7 @@ async function analyzeToken(address: string): Promise<string> {
                 symbol: tokenSymbol,
                 chain,
                 address: tokenToAnalyze, // Use the actual token address, not the pair address
-                tokenAge: coreToken?.isWrappedNative ? 1100 : (tokenAge !== null && tokenAge !== undefined ? tokenAge : null),
+                tokenAge: effectiveTokenAge,
                 pairAge,
                 liquidity,
                 holderCount,
