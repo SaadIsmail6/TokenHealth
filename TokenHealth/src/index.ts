@@ -2,10 +2,26 @@ import { makeTownsBot } from '@towns-protocol/bot'
 import commands from './commands'
 
 // ────────────────────────────────────────────────────────────────────────────────
-// TOKENHEALTH v2.0 - PRODUCTION-GRADE BLOCKCHAIN SECURITY ANALYZER
+// TOKENHEALTH v2.0 - SIMPLE, RELIABLE SECURITY SCANNER
 // ────────────────────────────────────────────────────────────────────────────────
-// Core Principle: SAFETY > ACCURACY > OPTIMISM
-// False safe is WORSE than false danger
+// 
+// CORE DESIGN PRINCIPLE: FAIL-CLOSED, NOT FAIL-OPEN
+// 
+// - Missing data → increase risk
+// - Uncertain analysis → MEDIUM or HIGH
+// - Never show SAFE unless strong evidence exists
+// - Never boost scores artificially
+// - No token < 7 days old can EVER be SAFE
+// 
+// This is a SECURITY bot, not a market data bot.
+// 
+// Features:
+// - Never crashes (comprehensive null safety)
+// - Never mislabels pairs or bluechips
+// - Never shows "UNKNOWN" or "Unverified Token"
+// - Never marks fresh launches as SAFE
+// - Always fails safely (high risk when unsure)
+// 
 // ────────────────────────────────────────────────────────────────────────────────
 
 // ============================================================================
@@ -43,9 +59,6 @@ interface TokenData {
     liquidity: number | null
     holderCount: number | null
     contractVerified: boolean | null
-    marketCap: number | null
-    cmcRank: number | null
-    cmcListed: boolean
 }
 
 interface RiskAnalysis {
@@ -410,6 +423,122 @@ async function detectEVMChain(address: string): Promise<string> {
 }
 
 // ============================================================================
+// STEP 1 — ADDRESS TYPE DETECTION (CRITICAL FIX)
+// ============================================================================
+// Before analysis, classify the input:
+// 1. Query DexScreener first
+//    If DexScreener returns a pair:
+//    - Treat input as PAIR ADDRESS
+//    - Always analyze dexData.baseToken (unless baseToken is a quote asset)
+//    - NEVER analyze the pair contract itself
+// 2. If not a pair:
+//    - Treat input as TOKEN CONTRACT
+//    - Fetch explorer metadata
+//    - Then locate its main trading pair on DexScreener
+// ============================================================================
+
+/**
+ * Detects if input address is a trading pair and extracts the correct token to analyze.
+ * 
+ * WETH / BLUECHIP PAIR CONFUSION FIX:
+ * When analyzing a pair:
+ * - If baseToken.symbol in [WETH, USDC, USDT, SOL]: Swap to analyze the OTHER token in the pair
+ * - Never analyze quote assets as the main token
+ * 
+ * This prevents:
+ * - WETH being flagged risky
+ * - Bluechips being misclassified
+ * 
+ * Returns: { isPair: boolean, tokenToAnalyze: string | null, isQuoteAsset: boolean }
+ */
+async function detectPairAndExtractToken(address: string): Promise<{
+    isPair: boolean
+    tokenToAnalyze: string | null
+    isQuoteAsset: boolean
+    baseToken: { address: string; symbol: string; name: string } | null
+    quoteToken: { address: string; symbol: string; name: string } | null
+}> {
+    try {
+        // STEP 1: Query DexScreener first to check if this is a pair
+        const dexResponse = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${address}`)
+        if (!dexResponse?.ok) {
+            return { isPair: false, tokenToAnalyze: null, isQuoteAsset: false, baseToken: null, quoteToken: null }
+        }
+        
+        const dexData = await dexResponse.json() || {}
+        if (!dexData?.pairs || !Array.isArray(dexData.pairs) || dexData.pairs.length === 0) {
+            return { isPair: false, tokenToAnalyze: null, isQuoteAsset: false, baseToken: null, quoteToken: null }
+        }
+        
+        // Find the pair that matches this address (could be pair contract or token in pair)
+        const normalizedInput = address.toLowerCase()
+        const mainPair = dexData.pairs.find((pair: any) => {
+            const pairAddress = pair?.pairAddress?.toLowerCase()
+            const baseAddr = pair?.baseToken?.address?.toLowerCase()
+            const quoteAddr = pair?.quoteToken?.address?.toLowerCase()
+            return pairAddress === normalizedInput || baseAddr === normalizedInput || quoteAddr === normalizedInput
+        }) || dexData.pairs[0] // Fallback to first pair
+        
+        if (!mainPair) {
+            return { isPair: false, tokenToAnalyze: null, isQuoteAsset: false, baseToken: null, quoteToken: null }
+        }
+        
+        const baseToken = mainPair?.baseToken || null
+        const quoteToken = mainPair?.quoteToken || null
+        
+        if (!baseToken || !quoteToken) {
+            return { isPair: false, tokenToAnalyze: null, isQuoteAsset: false, baseToken: null, quoteToken: null }
+        }
+        
+        // Known quote assets (WETH, USDC, USDT, DAI, SOL, etc.)
+        const quoteAssetSymbols = ['WETH', 'USDC', 'USDT', 'DAI', 'SOL', 'WBNB', 'WMATIC', 'USDC.E', 'USDT.E']
+        const baseSymbol = baseToken?.symbol?.toUpperCase() || ''
+        const quoteSymbol = quoteToken?.symbol?.toUpperCase() || ''
+        
+        // If baseToken is a quote asset, analyze quoteToken instead
+        // If quoteToken is a quote asset, analyze baseToken (normal case)
+        const isBaseQuoteAsset = quoteAssetSymbols.includes(baseSymbol)
+        const isQuoteQuoteAsset = quoteAssetSymbols.includes(quoteSymbol)
+        
+        let tokenToAnalyze: string | null = null
+        let isQuoteAsset = false
+        
+        if (isBaseQuoteAsset) {
+            // Base is quote asset (rare), analyze quote token
+            tokenToAnalyze = quoteToken?.address || null
+            isQuoteAsset = false
+        } else if (isQuoteQuoteAsset) {
+            // Quote is quote asset (normal), analyze base token
+            tokenToAnalyze = baseToken?.address || null
+            isQuoteAsset = false
+        } else {
+            // Neither is a known quote asset, default to baseToken
+            tokenToAnalyze = baseToken?.address || null
+            isQuoteAsset = false
+        }
+        
+        return {
+            isPair: true,
+            tokenToAnalyze,
+            isQuoteAsset,
+            baseToken: baseToken ? {
+                address: baseToken.address || '',
+                symbol: baseToken.symbol || '',
+                name: baseToken.name || ''
+            } : null,
+            quoteToken: quoteToken ? {
+                address: quoteToken.address || '',
+                symbol: quoteToken.symbol || '',
+                name: quoteToken.name || ''
+            } : null
+        }
+    } catch (error) {
+        console.error('[PairDetection] Error:', error)
+        return { isPair: false, tokenToAnalyze: null, isQuoteAsset: false, baseToken: null, quoteToken: null }
+    }
+}
+
+// ============================================================================
 // WRAPPED NATIVE TOKEN DETECTION
 // ============================================================================
 
@@ -632,19 +761,7 @@ async function fetchDexscreenerData(address: string): Promise<any> {
     }
 }
 
-// Fallback liquidity check via CoinGecko (if available)
-async function fetchLiquidityFallback(address: string, chain: string, cgData: any): Promise<number | null> {
-    try {
-        // If CoinGecko has market data, assume some liquidity exists (conservative estimate)
-        if (cgData && cgData.marketCap && cgData.marketCap > 0) {
-            // Very conservative: assume at least 1% of market cap is liquidity
-            return Math.floor(cgData.marketCap * 0.01)
-        }
-        return null
-    } catch (error) {
-        return null
-    }
-}
+// Liquidity fallback removed - rely only on DexScreener data
 
 async function fetchSolscanData(address: string) {
     const apiKey = process.env.SOLSCAN_API_KEY
@@ -684,39 +801,7 @@ async function fetchSolscanData(address: string) {
     })
 }
 
-async function fetchCoinGeckoData(address: string, chain: string) {
-    const platformMap: Record<string, string> = {
-        'Ethereum': 'ethereum',
-        'BSC': 'binance-smart-chain',
-        'Base': 'base',
-        'Arbitrum': 'arbitrum-one',
-        'Polygon': 'polygon-pos',
-    }
-    
-    const platform = platformMap[chain]
-    if (!platform) return null
-    
-    return await fetchWithRetry(async () => {
-        try {
-            const response = await fetch(
-                `https://api.coingecko.com/api/v3/coins/${platform}/contract/${address}`
-            )
-            if (!response?.ok) return null
-            const data = await response.json() || {}
-            
-            return {
-                name: data?.name || null,
-                symbol: data?.symbol || null,
-                marketCap: data?.market_data?.market_cap?.usd || null,
-                genesisDate: data?.genesis_date || null,
-                cmcRank: data?.market_cap_rank || null,
-            }
-        } catch (err) {
-            console.error('[CoinGecko] Fetch error:', err)
-            return null
-        }
-    })
-}
+// CoinGecko integration removed - focusing on security data only
 
 // ============================================================================
 // TOKEN AGE CALCULATION
@@ -726,30 +811,17 @@ async function calculateTokenAge(
     address: string,
     chain: string,
     dexData: any,
-    explorerData: any,
-    cgData: any
+    explorerData: any
 ): Promise<{ ageDays: number | null; ageHours: number | null }> {
     try {
-        // Check whitelist first
+        // Check whitelist first (for metadata only, not for scoring)
         const normalizedAddress = address.toLowerCase()
         if (WELL_KNOWN_TOKENS[normalizedAddress]) {
             const age = WELL_KNOWN_TOKENS[normalizedAddress].age
             return { ageDays: age, ageHours: age * 24 }
         }
         
-        // Try CoinGecko genesis date
-        if (cgData?.genesisDate) {
-            try {
-                const genesisTime = new Date(cgData.genesisDate).getTime()
-                const ageDays = Math.floor((Date.now() - genesisTime) / (1000 * 60 * 60 * 24))
-                const ageHours = Math.floor((Date.now() - genesisTime) / (1000 * 60 * 60))
-                return { ageDays, ageHours }
-            } catch (err) {
-                console.error('[TokenAge] CoinGecko date parse error:', err)
-            }
-        }
-        
-        // Try Dexscreener pair age
+        // Priority 1: DexScreener pair age (most reliable for new pairs)
         if (dexData && dexData.pairAge !== null && dexData.pairAge !== undefined) {
             const ageDays = Math.floor(dexData.pairAge)
             const ageHours = (dexData.pairAgeHours !== null && dexData.pairAgeHours !== undefined) 
@@ -758,14 +830,10 @@ async function calculateTokenAge(
             return { ageDays, ageHours }
         }
         
-        // Try explorer creation block/timestamp (more accurate)
-        // 7-DAY RULE: Try to get contract creation timestamp from explorer
+        // Priority 2: Explorer creation block/timestamp
         if (explorerData?.creationTx || explorerData?.creationBlock) {
             try {
-                // If we have creation transaction hash, we could fetch the block timestamp
-                // For now, use block number approximation (will be improved with actual timestamp fetch)
                 if (explorerData.creationBlock) {
-                    // Rough estimate: assume 13s per block for Ethereum, 3s for BSC, 2s for Polygon
                     const blockTimes: Record<string, number> = {
                         'Ethereum': 13,
                         'BSC': 3,
@@ -776,7 +844,6 @@ async function calculateTokenAge(
                     }
                     const blockTime = blockTimes[chain] || 13
                     const blocksPerDay = (24 * 60 * 60) / blockTime
-                    // Approximate current block (this is rough - ideally fetch from explorer)
                     const currentBlock = 20000000 // Approximate
                     const creationBlockNum = parseInt(String(explorerData.creationBlock), 10)
                     if (!isNaN(creationBlockNum) && creationBlockNum > 0) {
@@ -912,50 +979,44 @@ function calculateDataConfidence(
     explorerData: any,
     dexData: any,
     addressType: string,
-    cgData?: any,
     solscanData?: any
 ): DataConfidence & { apiFailures: string[] } {
     const checks = []
     const missing: string[] = []
     const apiFailures: string[] = []
     
-    // Track API failures for confidence system
+    // Track API failures for confidence system (fail-closed: missing data increases risk)
     let confidence = 100
-    if (!goPlusData) {
+    if (!goPlusData && addressType === 'EVM') {
         apiFailures.push('GoPlus')
-        confidence -= 20
+        confidence -= 25 // Increased penalty for missing security data
     }
     if (!dexData) {
         apiFailures.push('DexScreener')
-        confidence -= 15
+        confidence -= 20 // Increased penalty for missing liquidity/age data
     }
     if (!explorerData && addressType === 'EVM') {
         apiFailures.push('Explorer')
-        confidence -= 10
+        confidence -= 15 // Increased penalty for missing verification data
     }
-    if (!cgData && addressType === 'EVM') {
-        apiFailures.push('CoinGecko')
-        confidence -= 5
+    if (!solscanData && addressType === 'SOLANA') {
+        apiFailures.push('Solscan')
+        confidence -= 20 // Increased penalty for missing Solana security data
     }
     
-    // Define critical checks based on chain type
+    // Define critical security checks based on chain type
     if (addressType === 'EVM') {
         checks.push({ field: 'Token Age', available: tokenData.tokenAge !== null && tokenData.tokenAge !== undefined })
         checks.push({ field: 'Liquidity', available: tokenData.liquidity !== null && tokenData.liquidity !== undefined })
         checks.push({ field: 'Contract Verification', available: tokenData.contractVerified !== null && tokenData.contractVerified !== undefined })
-        checks.push({ field: 'Holder Count', available: tokenData.holderCount !== null && tokenData.holderCount !== undefined })
         checks.push({ field: 'Honeypot Check', available: goPlusData !== null && goPlusData !== undefined })
         checks.push({ field: 'Owner Privileges', available: goPlusData !== null && goPlusData !== undefined })
         checks.push({ field: 'Explorer Data', available: explorerData !== null && explorerData !== undefined })
-        checks.push({ field: 'Market Data', available: cgData !== null && cgData !== undefined })
     } else if (addressType === 'SOLANA') {
         checks.push({ field: 'Token Age', available: tokenData.tokenAge !== null && tokenData.tokenAge !== undefined })
         checks.push({ field: 'Liquidity', available: tokenData.liquidity !== null && tokenData.liquidity !== undefined })
-        checks.push({ field: 'Holder Count', available: tokenData.holderCount !== null && tokenData.holderCount !== undefined })
-        // METADATA FIX: For Solana, mint/freeze authority comes from solscanData, not dexData
         checks.push({ field: 'Mint Authority', available: solscanData !== null && solscanData !== undefined && solscanData.mintAuthority !== null && solscanData.mintAuthority !== undefined })
         checks.push({ field: 'Freeze Authority', available: solscanData !== null && solscanData !== undefined && solscanData.freezeAuthority !== null && solscanData.freezeAuthority !== undefined })
-        // Add DexScreener data check for Solana
         checks.push({ field: 'DexScreener Data', available: dexData !== null && dexData !== undefined })
     }
     
@@ -1045,7 +1106,13 @@ function detectSecurityFlags(
 }
 
 // ============================================================================
-// SCORING ENGINE (REDESIGNED)
+// SCORING ENGINE (SIMPLIFIED - CORE SECURITY CHECKS ONLY)
+// ============================================================================
+// Design Principle: FAIL-CLOSED
+// - Missing data → increase risk
+// - Uncertain analysis → MEDIUM or HIGH
+// - Never show SAFE unless strong evidence exists
+// - No token < 7 days old can EVER be SAFE
 // ============================================================================
 
 function calculateHealthScore(
@@ -1065,141 +1132,100 @@ function calculateHealthScore(
     const isWrapped = isWrappedNativeToken(address, symbol, chain)
     
     // ============================================================================
-    // 7-DAY HIGH RISK RULE: Override all scoring for tokens/pairs < 7 days old OR unknown age
+    // STEP 3: NEW TOKEN MODE (7-DAY HIGH RISK RULE) - MOST IMPORTANT
+    // If token or pair age < 7 days OR unknown age → Enter NEW TOKEN MODE
     // ============================================================================
     const isLessThan7Days = isTokenLessThan7DaysOld(tokenAge, pairAgeDays, address)
     if (isLessThan7Days) {
-        // Force score ≤ 30 for tokens/pairs < 7 days old OR unknown age (new pairs)
-        // Skip all positive scoring bonuses - this is a critical safety rule
-        score = 30
+        // NEW TOKEN MODE: Force score to 20-30 range (fixed range for new tokens)
+        // Skip all advanced scoring - only perform basic security checks
+        score = 25 // Fixed score in 20-30 range for new tokens
         const ageReason = (pairAgeDays === null && tokenAge === null) 
             ? 'New trading pair – age unknown, extremely high rug risk'
             : 'Token or trading pair created less than 7 days ago – extremely high rug risk period'
         penalties.push({ 
             reason: ageReason, 
-            points: 70 
+            points: 75 
         })
-        // Still check for critical security flags (honeypot, etc.) but don't add to score
-        // The 7-day rule already sets score to 30, which is below HIGH RISK threshold
+        // Still check for critical security flags (honeypot, etc.) but score is already at minimum
+        // The 7-day rule already sets score to 25, which forces HIGH RISK
+        return { score, penalties } // Early return - skip all other scoring for new tokens
     }
     
+    // ============================================================================
+    // CORE SECURITY CHECKS ONLY (from GoPlus, DexScreener, Explorer)
+    // ============================================================================
+    
     // CRITICAL FLAGS (immediate high risk) - apply to ALL tokens
-    // Note: For tokens < 7 days, these flags are still detected but score is already capped at 30
     if (securityFlags.honeypot) {
         penalties.push({ reason: 'Honeypot behavior detected', points: 50 })
-        if (!isLessThan7Days) {
-            score -= 50
-        }
+        score -= 50
     }
     
     if (securityFlags.mintAuthority) {
         penalties.push({ reason: 'Mint authority still active (supply inflation risk)', points: 30 })
-        if (!isLessThan7Days) {
-            score -= 30
-        }
+        score -= 30
     }
     
     if (securityFlags.freezeAuthority) {
         penalties.push({ reason: 'Freeze authority active (can freeze wallets)', points: 25 })
-        if (!isLessThan7Days) {
-            score -= 25
-        }
+        score -= 25
     }
     
     if (securityFlags.ownerPrivileges) {
         penalties.push({ reason: 'Dangerous owner privileges detected', points: 30 })
-        if (!isLessThan7Days) {
-            score -= 30
-        }
+        score -= 30
     }
     
-    // Skip liquidity/age penalties if 7-day rule already triggered
-    if (!isLessThan7Days) {
-        // LIQUIDITY & AGE - Skip for core/wrapped tokens
-        if (securityFlags.noLiquidity && !isCore && !isWrapped) {
-            penalties.push({ reason: 'No liquidity detected or insufficient liquidity', points: 25 })
-            score -= 25
-        }
-        
-        // Token age penalties - Skip for core/wrapped tokens (they're established)
-        // Note: <7 day tokens are already handled above, so this is for older tokens
-        if (!isCore && !isWrapped) {
-            if (tokenAge !== null && tokenAge < 1) {
-                penalties.push({ reason: 'Extremely new token (<24 hours) - high rug risk', points: 35 })
-                score -= 35
-            } else if (tokenAge === null) {
-                // Only penalize if we expected age but didn't get it (not for wrapped natives)
-                penalties.push({ reason: 'Token age unknown - cannot verify launch date', points: 10 })
-                score -= 10
-            }
-        }
+    if (securityFlags.blacklistAuthority) {
+        penalties.push({ reason: 'Blacklist function detected', points: 20 })
+        score -= 20
     }
     
-    // Skip other penalties if 7-day rule already triggered
-    if (!isLessThan7Days) {
-        // CONTRACT & VERIFICATION - Skip for core/wrapped tokens
-        if (securityFlags.unverifiedContract && !isCore && !isWrapped) {
-            penalties.push({ reason: 'Contract not verified on block explorer', points: 5 })
-            score -= 5
-        }
-        
-        if (securityFlags.proxyUpgradeable) {
-            penalties.push({ reason: 'Upgradeable proxy contract (owner can change logic)', points: 10 })
-            score -= 10
-        }
-        
-        if (securityFlags.blacklistAuthority) {
-            penalties.push({ reason: 'Blacklist function detected', points: 20 })
-            score -= 20
-        }
-        
-        // MARKET PRESENCE - Skip for core/wrapped tokens
-        if (securityFlags.notListed && !isCore && !isWrapped) {
-            penalties.push({ reason: 'Not listed on major DEXs or explorers', points: 15 })
-            score -= 15
-        }
-        
-        // DATA CONFIDENCE PENALTY (GLOBAL RULE 2 & 10: Cap at -10 total)
-        // Missing data can only increase risk by one level, never force HIGH RISK
-        let missingDataPenalty = 0
-        if (dataConfidence.level === 'LOW' && !isCore && !isWrapped) {
-            missingDataPenalty = 10
-        } else if (dataConfidence.level === 'MEDIUM' && !isCore && !isWrapped) {
-            missingDataPenalty = 5
-        }
-        
-        // GLOBAL RULE 10: Cap missing data penalty at -10 points total
-        if (missingDataPenalty > 0) {
-            penalties.push({ reason: 'Some market or explorer data unavailable', points: missingDataPenalty })
-            score -= missingDataPenalty
-        }
-        
-        // SOLANA LIMITED MODE
-        if (addressType === 'SOLANA') {
-            penalties.push({ reason: 'Solana security checks are limited', points: 15 })
-            score -= 15
-        }
+    // LIQUIDITY CHECK - Skip for core/wrapped tokens
+    if (securityFlags.noLiquidity && !isCore && !isWrapped) {
+        penalties.push({ reason: 'No liquidity detected or insufficient liquidity', points: 25 })
+        score -= 25
     }
     
-    // Clamp score (but 7-day rule already sets it to 30, so this won't override)
+    // CONTRACT VERIFICATION - Skip for core/wrapped tokens
+    if (securityFlags.unverifiedContract && !isCore && !isWrapped) {
+        penalties.push({ reason: 'Contract not verified on block explorer', points: 5 })
+        score -= 5
+    }
+    
+    if (securityFlags.proxyUpgradeable) {
+        penalties.push({ reason: 'Upgradeable proxy contract (owner can change logic)', points: 10 })
+        score -= 10
+    }
+    
+    // FAIL-CLOSED DESIGN: Missing data increases risk
+    // Missing security data = higher risk (fail-closed, not fail-open)
+    if (dataConfidence.level === 'LOW' && !isCore && !isWrapped) {
+        penalties.push({ reason: 'Some security data unavailable – confidence reduced', points: 15 })
+        score -= 15
+    } else if (dataConfidence.level === 'MEDIUM' && !isCore && !isWrapped) {
+        penalties.push({ reason: 'Some security data unavailable – confidence reduced', points: 8 })
+        score -= 8
+    }
+    
+    // SOLANA LIMITED MODE
+    if (addressType === 'SOLANA') {
+        penalties.push({ reason: 'Solana security checks are limited', points: 15 })
+        score -= 15
+    }
+    
+    // Clamp score
     score = Math.max(0, Math.min(100, score))
     
-    // OVERRIDE RULES: Missing data caps (REDUCED - only for non-core tokens)
-    // Skip if 7-day rule triggered (score already at 30)
-    if (!isLessThan7Days && !isCore && !isWrapped) {
+    // FAIL-CLOSED DESIGN: Missing data caps score (only for non-core tokens)
+    if (!isCore && !isWrapped) {
         if (dataConfidence.level === 'LOW') {
-            // Don't cap as aggressively - allow up to 70 instead of 55
-            score = Math.min(score, 70)
+            // Missing data = higher risk, cap at 65 (fail-closed)
+            score = Math.min(score, 65)
         } else if (dataConfidence.level === 'MEDIUM' && dataConfidence.percentage < 60) {
+            // Some data missing = moderate risk, cap at 75
             score = Math.min(score, 75)
-        }
-    }
-    
-    // New token caps (only for non-core tokens, and only if 7-day rule didn't trigger)
-    // Note: <7 day tokens are already handled by 7-day rule above
-    if (!isLessThan7Days && !isCore && !isWrapped) {
-        if (tokenAge !== null && tokenAge < 1) {
-            score = Math.min(score, 40)
         }
     }
     
@@ -1281,24 +1307,23 @@ function generateVerdict(
     const warnings: string[] = []
     
     // ============================================================================
-    // 7-DAY HIGH RISK RULE: Specific verdict for tokens/pairs < 7 days old OR unknown age
+    // STEP 3: NEW TOKEN MODE - Specific verdict for tokens/pairs < 7 days old OR unknown age
     // ============================================================================
     const isLessThan7Days = isTokenLessThan7DaysOld(tokenAgeDays, pairAgeDays, address)
     if (isLessThan7Days && riskLevel === 'HIGH') {
         const isUnknownAge = (pairAgeDays === null && tokenAgeDays === null)
-        const verdictText = isUnknownAge
-            ? '🔴 HIGH RISK — New trading pair detected. Age unknown – extremely high rug risk.'
-            : '🔴 HIGH RISK — Token or trading pair is less than 7 days old. Most rugs and malicious launches occur in the first week.'
+        const verdictText = '🔴 HIGH RISK — Fresh Launch Detected\nThis token or pair was created less than 7 days ago.\nMost rugs and scams happen in the first week.\nAutomatic HIGH RISK classification applied.'
         const warningText = isUnknownAge
-            ? 'New trading pair – age cannot be determined, extremely high rug risk'
-            : 'Token or trading pair created less than 7 days ago – extremely high rug risk period'
+            ? '🆕 Fresh Launch Detected — Age unknown, extremely high rug risk'
+            : '🆕 Fresh Launch Detected — Token or trading pair created less than 7 days ago'
         
         return {
             verdict: verdictText,
             warnings: [
                 warningText,
                 'Most rug pulls and exit scams happen within the first week of launch',
-                'Wait at least 7 days and monitor on-chain activity before considering this token'
+                'Wait at least 7 days and monitor on-chain activity before considering this token',
+                'Automatic HIGH RISK classification applied due to new token status'
             ]
         }
     }
@@ -1402,15 +1427,18 @@ function generateVerdict(
         }
     }
     
-    // LOW RISK - only if all conditions are met
+    // LOW RISK - only if ALL conditions are met (fail-closed design)
+    // Never show SAFE unless strong evidence exists
     if (
         dataConfidence.level === 'HIGH' &&
         !securityFlags.honeypot &&
         !securityFlags.mintAuthority &&
         !securityFlags.ownerPrivileges &&
         !securityFlags.noLiquidity &&
+        !securityFlags.blacklistAuthority &&
         tokenAge !== null &&
-        tokenAge >= 7
+        tokenAge >= 7 &&
+        riskLevel === 'LOW'
     ) {
         return {
             verdict: '🟢 NO CRITICAL RISKS DETECTED – Token appears relatively safe.',
@@ -1418,7 +1446,15 @@ function generateVerdict(
         }
     }
     
-    // Fallback
+    // FAIL-CLOSED: If data is missing or uncertain, default to MEDIUM/HIGH risk
+    if (dataConfidence.level === 'LOW') {
+        return {
+            verdict: '⚠️ INSUFFICIENT DATA – Risk cannot be accurately determined.',
+            warnings: [`Only ${dataConfidence.percentage}% of security checks could be performed`, 'Missing data increases risk - treat as high risk']
+        }
+    }
+    
+    // Fallback - default to caution
     return {
         verdict: '⚠️ REVIEW RECOMMENDED – Unable to fully assess risk.',
         warnings: ['Incomplete analysis - exercise caution']
@@ -1487,12 +1523,6 @@ function generateReport(
     
     report += `Holder Count: ${tokenData.holderCount !== null ? tokenData.holderCount.toLocaleString() : '⚠️ Data unavailable'}\n`
     
-    if (tokenData.cmcListed) {
-        report += `CMC Listing: ✅ Listed`
-        if (tokenData.cmcRank) report += ` (Rank #${tokenData.cmcRank})`
-        report += '\n'
-    }
-    
     // Missing Data Warning
     if (analysis.dataConfidence.missingFields.length > 0) {
         report += `\n⚠️ Missing / Unavailable Data:\n`
@@ -1540,11 +1570,22 @@ async function analyzeToken(address: string): Promise<string> {
             return '⚠️ INVALID ADDRESS\n\nPlease provide a valid token contract address.'
         }
         
-        // Detect address type
-        const addressType = detectAddressType(address)
+        // STEP 1: PAIR VS TOKEN DETECTION (CRITICAL FIX)
+        // Query DexScreener first to check if input is a pair address
+        const pairDetection = await detectPairAndExtractToken(address)
+        let tokenToAnalyze = address // Default to input address
+        
+        // If input is a pair, analyze the correct token (not the pair contract)
+        if (pairDetection.isPair && pairDetection.tokenToAnalyze) {
+            tokenToAnalyze = pairDetection.tokenToAnalyze
+            // Use pair's baseToken/quoteToken metadata for display
+        }
+        
+        // Detect address type (use the token address, not the pair address)
+        const addressType = detectAddressType(tokenToAnalyze)
         
         if (addressType === 'UNKNOWN') {
-            return '⚠️ UNSUPPORTED ADDRESS FORMAT\n\n' +
+            return '⚠️ INVALID OR UNSUPPORTED ADDRESS\n\n' +
                    'Unable to identify if this is an EVM or Solana address.\n' +
                    'Please provide a valid token contract address.'
         }
@@ -1555,67 +1596,81 @@ async function analyzeToken(address: string): Promise<string> {
         let explorerData: any = null
         let dexData: any = null
         let solscanData: any = null
-        let cgData: any = null
         
         try {
         
         // EVM ANALYSIS
         if (addressType === 'EVM') {
-            const chain = await detectEVMChain(address)
+            const chain = await detectEVMChain(tokenToAnalyze)
             
-            // Fetch all data in parallel
-            const [goPlus, explorer, dex, cg] = await Promise.all([
-                fetchGoPlusData(address, chain),
-                fetchExplorerData(address, chain),
-                fetchDexscreenerData(address),
-                fetchCoinGeckoData(address, chain)
+            // Fetch all data in parallel (using tokenToAnalyze, not original address)
+            const [goPlus, explorer, dex] = await Promise.all([
+                fetchGoPlusData(tokenToAnalyze, chain),
+                fetchExplorerData(tokenToAnalyze, chain),
+                fetchDexscreenerData(tokenToAnalyze) // Will find pair for this token
             ])
             
             goPlusData = goPlus
             explorerData = explorer
             dexData = dex
-            cgData = cg
             
-            const tokenAgeResult = await calculateTokenAge(address, chain, dexData, explorerData, cgData)
+            const tokenAgeResult = await calculateTokenAge(tokenToAnalyze, chain, dexData, explorerData)
             const tokenAge = tokenAgeResult?.ageDays || null
             
-            // Check CORE_TOKENS first (for name/symbol override), then whitelist, then extended bluechip
-            const normalizedAddress = address.toLowerCase()
+            // ============================================================================
+            // STEP 2 — TOKEN METADATA RESOLUTION (NO MORE UNKNOWN)
+            // ============================================================================
+            // Always prioritize DexScreener metadata for new/unverified tokens:
+            // Use in order:
+            // - dexData.baseToken.name
+            // - dexData.baseToken.symbol
+            // 
+            // Fallback rules:
+            // - If name missing but symbol exists: Token name = symbol
+            // - If both missing: Token name = "New Token", Symbol = "NEW"
+            // - Add warning: "Token metadata not yet indexed (fresh launch)"
+            // 
+            // Never display:
+            // - "Unverified Token"
+            // - "Symbol: UNKNOWN"
+            // ============================================================================
+            
+            // Priority: Pair detection metadata > CORE > Bluechip > Whitelist > DexScreener > GoPlus > Fallback
+            const normalizedAddress = tokenToAnalyze.toLowerCase()
             const coreToken = CORE_TOKENS[normalizedAddress]
             const bluechipToken = EXTENDED_BLUECHIP_LIST[normalizedAddress]
             const whitelistEntry = WELL_KNOWN_TOKENS[normalizedAddress]
             
-            // GLOBAL RULE 8: Verify metadata from multiple sources to prevent mismatches
-            // Validate that API data matches the address being analyzed
-            const apiAddress = goPlusData?.token_address ? goPlusData.token_address.toLowerCase() : null
-            const cgAddress = cgData?.contract_address ? cgData.contract_address.toLowerCase() : null
+            // If pair was detected, use pair's token metadata (most accurate for new pairs)
+            const pairTokenName = pairDetection.isPair ? (pairDetection.baseToken?.name || pairDetection.quoteToken?.name) : null
+            const pairTokenSymbol = pairDetection.isPair ? (pairDetection.baseToken?.symbol || pairDetection.quoteToken?.symbol) : null
             
-            // Only trust API data if address matches
-            const trustedGoPlusData = (apiAddress === normalizedAddress || !apiAddress) ? goPlusData : null
-            const trustedCgData = (cgAddress === normalizedAddress || !cgAddress) ? cgData : null
-            
-            // METADATA FIX: Prioritize DexScreener baseToken metadata for new/unverified pairs
-            // If input is a PAIR address, always display the BASE token as the analyzed token
-            // Prefer DexScreener baseToken metadata for new/unverified pairs
+            // DexScreener metadata (from pair detection or direct query)
+            const dexMatchingToken = dexData?.matchingToken || null
             const dexBaseToken = dexData?.baseToken || null
-            const dexBaseName = (dexBaseToken && dexBaseToken.name && dexBaseToken.name.trim()) ? dexBaseToken.name.trim() : null
-            const dexBaseSymbol = (dexBaseToken && dexBaseToken.symbol && dexBaseToken.symbol.trim()) ? dexBaseToken.symbol.trim() : null
+            const dexTokenName = (dexMatchingToken?.name || dexBaseToken?.name || pairTokenName)?.trim() || null
+            const dexTokenSymbol = (dexMatchingToken?.symbol || dexBaseToken?.symbol || pairTokenSymbol)?.trim() || null
             
-            // Use most trusted source (CORE > Bluechip > Whitelist > DexScreener baseToken > Validated API > Fallback)
+            // GoPlus metadata (validate address matches)
+            const apiAddress = goPlusData?.token_address ? goPlusData.token_address.toLowerCase() : null
+            const trustedGoPlusData = (apiAddress === normalizedAddress || !apiAddress) ? goPlusData : null
+            
+            // METADATA RESOLUTION: Never show "UNKNOWN" or "Unverified Token"
+            // Priority order: CORE > Bluechip > Whitelist > Pair detection > DexScreener > GoPlus > Fallback
             const tokenName = coreToken?.name 
                 || bluechipToken?.name 
                 || whitelistEntry?.name 
-                || dexBaseName // METADATA FIX: DexScreener baseToken.name takes priority over API data
-                || (trustedCgData?.name && trustedCgData.name !== 'Unknown' && trustedCgData.name.trim() ? trustedCgData.name.trim() : null)
+                || pairTokenName
+                || dexTokenName
                 || (trustedGoPlusData?.token_name && trustedGoPlusData.token_name !== 'Unknown' && trustedGoPlusData.token_name.trim() ? trustedGoPlusData.token_name.trim() : null)
-                || (dexBaseSymbol || null) // If name missing but symbol exists, use symbol as name
-                || 'New Token' // Never show "Unverified Token"
+                || dexTokenSymbol // If name missing but symbol exists, use symbol as name
+                || 'New Token' // Never show "Unverified Token" or shortened address
             
             const tokenSymbol = coreToken?.symbol 
                 || bluechipToken?.symbol 
                 || whitelistEntry?.symbol 
-                || dexBaseSymbol // METADATA FIX: DexScreener baseToken.symbol takes priority over API data
-                || (trustedCgData?.symbol && trustedCgData.symbol !== 'UNKNOWN' && trustedCgData.symbol.trim() ? trustedCgData.symbol.trim() : null)
+                || pairTokenSymbol
+                || dexTokenSymbol
                 || (trustedGoPlusData?.token_symbol && trustedGoPlusData.token_symbol !== 'UNKNOWN' && trustedGoPlusData.token_symbol.trim() ? trustedGoPlusData.token_symbol.trim() : null)
                 || 'NEW' // Never show "UNKNOWN"
             
@@ -1634,24 +1689,21 @@ async function analyzeToken(address: string): Promise<string> {
                 name: tokenName,
                 symbol: tokenSymbol,
                 chain,
-                address,
+                address: tokenToAnalyze, // Use the actual token address, not the pair address
                 tokenAge: coreToken?.isWrappedNative ? 1100 : (tokenAge !== null && tokenAge !== undefined ? tokenAge : null),
                 pairAge,
                 liquidity,
                 holderCount,
                 contractVerified: (explorerData && explorerData.verified !== null && explorerData.verified !== undefined) 
                     ? explorerData.verified 
-                    : (coreToken || isBluechip ? true : null),
-                marketCap: (cgData && cgData.marketCap !== null && cgData.marketCap !== undefined) ? cgData.marketCap : null,
-                cmcRank: (cgData && cgData.cmcRank !== null && cgData.cmcRank !== undefined) ? cgData.cmcRank : null,
-                cmcListed: !!cgData
+                    : (coreToken || isBluechip ? true : null)
             }
         }
         // SOLANA ANALYSIS
         else {
             const [solscan, dex] = await Promise.all([
-                fetchSolscanData(address),
-                fetchDexscreenerData(address)
+                fetchSolscanData(tokenToAnalyze),
+                fetchDexscreenerData(tokenToAnalyze)
             ])
             
             solscanData = solscan
@@ -1664,7 +1716,7 @@ async function analyzeToken(address: string): Promise<string> {
             }
             
             // Check CORE_TOKENS for Solana tokens (SOL, USDC)
-            const normalizedAddress = address.toLowerCase()
+            const normalizedAddress = tokenToAnalyze.toLowerCase()
             const coreToken = CORE_TOKENS[normalizedAddress]
             
             // METADATA FIX: Prioritize DexScreener matchingToken (token that matches input address)
@@ -1700,34 +1752,22 @@ async function analyzeToken(address: string): Promise<string> {
                 name: solanaTokenName,
                 symbol: solanaTokenSymbol,
                 chain: 'Solana',
-                address,
+                address: tokenToAnalyze, // Use the actual token address, not the pair address
                 tokenAge,
                 pairAge,
                 liquidity,
                 holderCount,
-                contractVerified: null, // N/A for Solana
-                marketCap: null,
-                cmcRank: null,
-                cmcListed: false
+                contractVerified: null // N/A for Solana
             }
         }
         
-        // Try liquidity fallback if DexScreener failed (EVM only)
-        if (addressType === 'EVM' && tokenData && tokenData.liquidity === null && cgData) {
-            const fallbackLiquidity = await fetchLiquidityFallback(address, tokenData.chain, cgData)
-            if (fallbackLiquidity !== null) {
-                tokenData.liquidity = fallbackLiquidity
-            }
-        }
-        
-        // Calculate data confidence (pass solscanData for Solana)
+        // Calculate data confidence (pass solscanData for Solana, removed cgData)
         const dataConfidence = calculateDataConfidence(
             tokenData,
             goPlusData,
             explorerData,
             dexData,
             addressType,
-            cgData,
             solscanData
         )
         
@@ -1752,66 +1792,55 @@ async function analyzeToken(address: string): Promise<string> {
         
         // GLOBAL RULE 1: If tokenData is null, use safe defaults with DexScreener fallback
         if (!tokenData) {
-            const normalizedAddress = address.toLowerCase()
-            const bluechipToken = EXTENDED_BLUECHIP_LIST[normalizedAddress]
-            const isBluechip = isExtendedBluechip(address)
+            const normalizedTokenAddress = tokenToAnalyze.toLowerCase()
+            const bluechipToken = EXTENDED_BLUECHIP_LIST[normalizedTokenAddress]
+            const isBluechip = isExtendedBluechip(tokenToAnalyze)
             
-            // METADATA FIX: Try DexScreener baseToken as fallback
+            // METADATA FIX: Try pair detection metadata or DexScreener baseToken as fallback
+            const pairTokenName = pairDetection.isPair ? (pairDetection.baseToken?.name || pairDetection.quoteToken?.name) : null
+            const pairTokenSymbol = pairDetection.isPair ? (pairDetection.baseToken?.symbol || pairDetection.quoteToken?.symbol) : null
             const dexBaseToken = dexData?.baseToken || null
             const dexBaseName = (dexBaseToken && dexBaseToken.name && dexBaseToken.name.trim()) ? dexBaseToken.name.trim() : null
             const dexBaseSymbol = (dexBaseToken && dexBaseToken.symbol && dexBaseToken.symbol.trim()) ? dexBaseToken.symbol.trim() : null
             
-            // Fallback name/symbol extraction
+            // Fallback name/symbol extraction (never show "Unknown" or shortened address)
             let fallbackName = bluechipToken?.name 
+                || pairTokenName
                 || dexBaseName 
                 || dexBaseSymbol 
-                || (address.length > 8 ? `${address.substring(0, 4)}...${address.substring(address.length - 4)}` : address)
-                || 'New Token'
+                || 'New Token' // Never show shortened address or "Unknown Token"
             
             let fallbackSymbol = bluechipToken?.symbol 
+                || pairTokenSymbol
                 || dexBaseSymbol 
-                || 'NEW'
+                || 'NEW' // Never show "UNKNOWN"
             
             tokenData = {
                 name: fallbackName,
                 symbol: fallbackSymbol,
                 chain: addressType === 'EVM' ? 'Ethereum' : 'Solana',
-                address,
+                address: tokenToAnalyze, // Use the actual token address
                 tokenAge: null,
                 pairAge: null,
                 liquidity: isBluechip ? 1000000 : null,
                 holderCount: null,
-                contractVerified: isBluechip ? true : null,
-                marketCap: null,
-                cmcRank: null,
-                cmcListed: false
+                contractVerified: isBluechip ? true : null
             }
         }
         
         // Continue with analysis using tokenData (even if partial)
         try {
-            // Try liquidity fallback if DexScreener failed
-            let finalLiquidity = tokenData.liquidity
-            if (finalLiquidity === null && cgData) {
-                const fallbackLiquidity = await fetchLiquidityFallback(address, tokenData.chain, cgData)
-                if (fallbackLiquidity !== null) {
-                    finalLiquidity = fallbackLiquidity
-                    tokenData.liquidity = fallbackLiquidity
-                }
-            }
-            
-            // Calculate data confidence (with improved accuracy, pass solscanData for Solana)
+            // Calculate data confidence (removed CoinGecko dependency)
             const dataConfidence = calculateDataConfidence(
                 tokenData,
                 goPlusData,
                 explorerData,
                 dexData,
                 addressType,
-                cgData,
                 solscanData
             )
             
-            // Detect security flags
+            // Detect security flags (using tokenToAnalyze, not original address)
             const securityFlags = detectSecurityFlags(
                 goPlusData,
                 solscanData,
@@ -1819,19 +1848,19 @@ async function analyzeToken(address: string): Promise<string> {
                 dexData,
                 tokenData.tokenAge,
                 addressType,
-                address,
+                tokenToAnalyze, // Use the actual token address
                 tokenData.symbol,
                 tokenData.chain
             )
             
-            // Check if token is core, wrapped, or bluechip
-            const normalizedAddress = address.toLowerCase()
-            const isCore = isCoreToken(address)
-            const isWrapped = isWrappedNativeToken(address, tokenData.symbol, tokenData.chain)
-            const isBluechip = isExtendedBluechip(address)
+            // Check if token is core, wrapped, or bluechip (using tokenToAnalyze)
+            const normalizedTokenAddress = tokenToAnalyze.toLowerCase()
+            const isCore = isCoreToken(tokenToAnalyze)
+            const isWrapped = isWrappedNativeToken(tokenToAnalyze, tokenData.symbol, tokenData.chain)
+            const isBluechip = isExtendedBluechip(tokenToAnalyze)
             
-            // GLOBAL RULE 3: Detect very new tokens
-            const tokenAgeResult = await calculateTokenAge(address, tokenData.chain, dexData, explorerData, cgData)
+            // Calculate token age (removed CoinGecko dependency)
+            const tokenAgeResult = await calculateTokenAge(tokenToAnalyze, tokenData.chain, dexData, explorerData)
             const pairAgeHours = (dexData && dexData.pairAgeHours !== null && dexData.pairAgeHours !== undefined) ? dexData.pairAgeHours : null
             const isVeryNew = isVeryNewToken(tokenAgeResult, pairAgeHours, dexData)
             
@@ -1856,11 +1885,17 @@ async function analyzeToken(address: string): Promise<string> {
             let finalRiskLevel: 'LOW' | 'MEDIUM' | 'HIGH'
             
             // 7-DAY RULE: Check if token/pair is < 7 days old (overrides other logic)
-            const isLessThan7Days = isTokenLessThan7DaysOld(tokenAgeDays, pairAgeDays, address)
+            const isLessThan7Days = isTokenLessThan7DaysOld(tokenAgeDays, pairAgeDays, tokenToAnalyze)
             if (isLessThan7Days) {
-                // 7-day rule already set score to 30 in calculateHealthScore
+                // NEW TOKEN MODE: Force score to 20-30, HIGH RISK, LOW confidence
                 finalScore = Math.min(30, score) // Ensure score ≤ 30
                 finalRiskLevel = 'HIGH' // Force HIGH RISK
+                // Override confidence to LOW for new tokens (as per NEW TOKEN MODE rules)
+                dataConfidence = {
+                    ...dataConfidence,
+                    level: 'LOW',
+                    percentage: Math.min(dataConfidence.percentage, 30) // Cap at 30% for new tokens
+                }
             } else if (isVeryNew) {
                 // Very new tokens: MEDIUM risk, 60-75 score (only if not < 7 days)
                 finalScore = Math.max(60, Math.min(75, score))
@@ -1871,7 +1906,7 @@ async function analyzeToken(address: string): Promise<string> {
                 finalRiskLevel = isBluechip ? 'MEDIUM' : 'LOW'
             } else {
                 // GLOBAL RULE 6: HIGH RISK only for real scams
-                finalRiskLevel = determineRiskLevel(finalScore, securityFlags, dataConfidence, address, tokenData.symbol, tokenData.chain, tokenAgeDays, pairAgeDays)
+                finalRiskLevel = determineRiskLevel(finalScore, securityFlags, dataConfidence, tokenToAnalyze, tokenData.symbol, tokenData.chain, tokenAgeDays, pairAgeDays)
             }
             
             // METADATA FIX: Check if token metadata is missing and add warning
@@ -1888,7 +1923,7 @@ async function analyzeToken(address: string): Promise<string> {
                 addressType,
                 tokenAgeDays,
                 pairAgeDays,
-                address
+                tokenToAnalyze
             )
             
             // METADATA FIX: Add warning if metadata is missing or using fallback values
@@ -1939,18 +1974,15 @@ async function analyzeToken(address: string): Promise<string> {
             const isBluechip = isExtendedBluechip(address)
             
             const safeTokenData: TokenData = {
-                name: bluechipToken?.name || 'Unknown Token',
-                symbol: bluechipToken?.symbol || 'UNKNOWN',
+                name: bluechipToken?.name || 'New Token',
+                symbol: bluechipToken?.symbol || 'NEW',
                 chain: addressType === 'EVM' ? 'Ethereum' : 'Solana',
-                address,
+                address: tokenToAnalyze,
                 tokenAge: null,
                 pairAge: null,
                 liquidity: isBluechip ? 1000000 : null,
                 holderCount: null,
-                contractVerified: isBluechip ? true : null,
-                marketCap: null,
-                cmcRank: null,
-                cmcListed: false
+                contractVerified: isBluechip ? true : null
             }
             
             const safeAnalysis: RiskAnalysis = {
@@ -1996,18 +2028,15 @@ async function analyzeToken(address: string): Promise<string> {
         const isBluechip = isExtendedBluechip(address)
         
         const safeTokenData: TokenData = {
-            name: bluechipToken?.name || 'Unknown Token',
-            symbol: bluechipToken?.symbol || 'UNKNOWN',
+            name: bluechipToken?.name || 'New Token',
+            symbol: bluechipToken?.symbol || 'NEW',
             chain: addressType === 'EVM' ? 'Ethereum' : 'Solana',
             address,
             tokenAge: null,
             pairAge: null,
             liquidity: isBluechip ? 1000000 : null,
             holderCount: null,
-            contractVerified: isBluechip ? true : null,
-            marketCap: null,
-            cmcRank: null,
-            cmcListed: false
+            contractVerified: isBluechip ? true : null
         }
         
         const safeAnalysis: RiskAnalysis = {
