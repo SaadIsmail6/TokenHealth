@@ -117,7 +117,6 @@ const WELL_KNOWN_TOKENS: Record<string, { name: string; symbol: string; age: num
     '0xae7ab96520de3a18e5e111b5eaab095312d7fe84': { name: 'Lido Staked Ether', symbol: 'stETH', age: 1200 },
     
     // Meme Coins
-    '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2': { name: 'Pepe', symbol: 'PEPE', age: 600 },
     '0x4ed4e862860bed51a9570b96d89af5e1b0efefed': { name: 'Dogecoin (Wrapped)', symbol: 'DOGE', age: 1200 },
     
     // Gaming & Metaverse
@@ -131,9 +130,7 @@ const WELL_KNOWN_TOKENS: Record<string, { name: string; symbol: string; age: num
     '0x3432b6a60d23ca0dfca7761b7ab56459d9c964d0': { name: 'Frax Share', symbol: 'FXS', age: 1200 },
     
     // Oracle & Infrastructure
-    '0x0f5d2fb29fb7d3cfee444a200298f468908cc942': { name: 'The Graph', symbol: 'GRT', age: 1300 },
     '0xe41d2489571d322189246dafa5ebde1f4699f498': { name: '0x Protocol', symbol: 'ZRX', age: 2500 },
-    '0xc00e94cb662c3520282e6f5717214004a7f26888': { name: 'Render Token', symbol: 'RNDR', age: 1400 },
     
     // ===== BASE CHAIN =====
     '0x4200000000000000000000000000000000000006': { name: 'Wrapped Ether', symbol: 'WETH', age: 520, chain: 'Base' },
@@ -152,10 +149,10 @@ const WELL_KNOWN_TOKENS: Record<string, { name: string; symbol: string; age: num
     '0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82': { name: 'PancakeSwap', symbol: 'CAKE', age: 1550 },
     
     // ===== ARBITRUM =====
-    '0x82af49447d8a07e3bd95bd0d56f35241523fbab1': { name: 'Wrapped Ether', symbol: 'WETH', age: 1100 },
-    '0xff970a61a04b1ca14834a43f5de4533ebddb5cc8': { name: 'USD Coin', symbol: 'USDC', age: 1100 },
-    '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9': { name: 'Tether USD', symbol: 'USDT', age: 1100 },
-    '0xda10009cbd5d07dd0cecc66161fc93d7c9000da1': { name: 'Dai Stablecoin', symbol: 'DAI', age: 1100 },
+    '0x82af49447d8a07e3bd95bd0d56f35241523fbab1': { name: 'Wrapped Ether', symbol: 'WETH', age: 1100, chain: 'Arbitrum' },
+    '0xff970a61a04b1ca14834a43f5de4533ebddb5cc8': { name: 'USD Coin', symbol: 'USDC', age: 1100, chain: 'Arbitrum' },
+    '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9': { name: 'Tether USD', symbol: 'USDT', age: 1100, chain: 'Arbitrum' },
+    '0xda10009cbd5d07dd0cecc66161fc93d7c9000da1': { name: 'Dai Stablecoin', symbol: 'DAI', age: 1100, chain: 'Arbitrum' },
     '0x912ce59144191c1204e64559fe8253a0e49e6548': { name: 'Arbitrum', symbol: 'ARB', age: 350 },
     
     // ===== POLYGON =====
@@ -169,11 +166,8 @@ const WELL_KNOWN_TOKENS: Record<string, { name: string; symbol: string; age: num
     '0xd6df932a45c0f255f85145f286ea0b292b21c90b': { name: 'Aave', symbol: 'AAVE', age: 1400 },
     
     // ===== OPTIMISM =====
-    '0x4200000000000000000000000000000000000006': { name: 'Wrapped Ether', symbol: 'WETH', age: 1200 },
-    '0x7f5c764cbc14f9669b88837ca1490cca17c31607': { name: 'USD Coin', symbol: 'USDC', age: 1200 },
-    '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58': { name: 'Tether USD', symbol: 'USDT', age: 1200 },
-    '0xda10009cbd5d07dd0cecc66161fc93d7c9000da1': { name: 'Dai Stablecoin', symbol: 'DAI', age: 1200 },
-    '0x4200000000000000000000000000000000000042': { name: 'Optimism', symbol: 'OP', age: 650 },
+    '0x7f5c764cbc14f9669b88837ca1490cca17c31607': { name: 'USD Coin', symbol: 'USDC', age: 1200, chain: 'Optimism' },
+    '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58': { name: 'Tether USD', symbol: 'USDT', age: 1200, chain: 'Optimism' },
 }
 
 // ============================================================================
@@ -214,7 +208,6 @@ const CORE_TOKENS: Record<string, { name: string; symbol: string; chain: string;
     // Optimism
     '0x7f5c764cbc14f9669b88837ca1490cca17c31607': { name: 'USD Coin', symbol: 'USDC', chain: 'Optimism' },
     '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58': { name: 'Tether USD', symbol: 'USDT', chain: 'Optimism' },
-    '0xda10009cbd5d07dd0cecc66161fc93d7c9000da1': { name: 'Dai Stablecoin', symbol: 'DAI', chain: 'Optimism' },
 }
 
 // ============================================================================
@@ -282,15 +275,8 @@ const EXTENDED_BLUECHIP_LIST: Record<string, { name: string; symbol: string; cha
     '0x000000fa00b200406de700041cfc6b19bbfb4d13': { name: 'Towns Protocol', symbol: 'TOWNS', chain: 'Base' },
     
     // Optimism
-    '0x4200000000000000000000000000000000000006': { name: 'Wrapped Ether', symbol: 'WETH', chain: 'Optimism' },
     '0x7f5c764cbc14f9669b88837ca1490cca17c31607': { name: 'USD Coin', symbol: 'USDC', chain: 'Optimism' },
     '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58': { name: 'Tether USD', symbol: 'USDT', chain: 'Optimism' },
-    '0xda10009cbd5d07dd0cecc66161fc93d7c9000da1': { name: 'Dai Stablecoin', symbol: 'DAI', chain: 'Optimism' },
-    '0x4200000000000000000000000000000000000042': { name: 'Optimism', symbol: 'OP', chain: 'Optimism' },
-}
-
-function isExtendedBluechip(address: string): boolean {
-    return !!EXTENDED_BLUECHIP_LIST[address.toLowerCase()]
 }
 
 // Known wrapped native token symbols (for detection)
@@ -1423,7 +1409,8 @@ function generateVerdict(
     }
     
     // Very new pair detection (even if contract is older)
-    if (dataConfidence.level === 'LOW' && tokenAge === null) {
+    const confidenceLevel1: string = dataConfidence.level
+    if ((confidenceLevel1 === 'LOW' || confidenceLevel1 === 'MEDIUM') && tokenAge === null) {
         return {
             verdict: '⚠️ NEWLY CREATED TOKEN – Limited on-chain history available.',
             warnings: ['Token is newly created – limited on-chain history available', 'Market and liquidity data still forming']
@@ -1438,7 +1425,8 @@ function generateVerdict(
     }
     
     // SOLANA LIMITED MODE
-    if (addressType === 'SOLANA' && dataConfidence.level !== 'HIGH') {
+    const confidenceLevel2: string = dataConfidence.level
+    if (addressType === 'SOLANA' && (confidenceLevel2 === 'MEDIUM' || confidenceLevel2 === 'LOW')) {
         return {
             verdict: '⚠️ LIMITED SOLANA ANALYSIS – Manual review required.',
             warnings: ['Solana security features are limited compared to EVM chains']
@@ -1485,7 +1473,8 @@ function generateVerdict(
     }
     
     // FAIL-CLOSED: If data is missing or uncertain, default to MEDIUM/HIGH risk
-    if (dataConfidence.level === 'LOW') {
+    const finalConfidenceLevel: string = dataConfidence.level
+    if (finalConfidenceLevel === 'LOW') {
         return {
             verdict: '⚠️ INSUFFICIENT DATA – Risk cannot be accurately determined.',
             warnings: [`Only ${dataConfidence.percentage}% of security checks could be performed`, 'Missing data increases risk - treat as high risk']
@@ -2187,7 +2176,8 @@ bot.onSlashCommand('health', async (handler, event) => {
 
 // Natural language detection
 bot.onMessage(async (handler, event) => {
-    const message = event.message.text.toLowerCase()
+    const messageText = typeof event.message === 'string' ? event.message : (event.message as any)?.text || ''
+    const message = messageText.toLowerCase()
     
     // Check if bot is mentioned or safety query
     const mentionedBot = message.includes('tokenhealth')
