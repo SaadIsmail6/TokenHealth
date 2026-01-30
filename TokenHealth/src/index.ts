@@ -1847,21 +1847,29 @@ function generateReport(
     const divider = '━━━━━━━━━━━━━━━━━━━━━━'
     const riskEmoji = getRiskEmoji(analysis.riskLevel)
     
-    let report = `🛡️ TOKENHEALTH SECURITY REPORT\n${divider}\n`
+    let report = `🛡️ TOKENHEALTH SECURITY REPORT\n`
+    report += `${divider}\n`
+    report += `\n`
     
     // Token Info
     report += `🧬 Token      : ${tokenData.name || 'Unknown'}\n`
     report += `⛓️ Chain      : ${tokenData.chain}\n`
-    report += `📍 Address    : ${shortenAddress(tokenData.address)}\n\n`
+    report += `📍 Address    : ${shortenAddress(tokenData.address)}\n`
+    report += `\n`
     
     // Risk Summary
-    report += `📊 RISK SUMMARY\n${divider}\n`
+    report += `📊 RISK SUMMARY\n`
+    report += `${divider}\n`
+    report += `\n`
     report += `Score        : ${analysis.healthScore}/100\n`
     report += `Risk Level   : ${riskEmoji} ${analysis.riskLevel}\n`
-    report += `Confidence   : ${analysis.dataConfidence.percentage}%\n\n`
+    report += `Confidence   : ${analysis.dataConfidence.percentage}%\n`
+    report += `\n`
     
     // Security Checks
-    report += `🔍 SECURITY CHECKS\n${divider}\n`
+    report += `🔍 SECURITY CHECKS\n`
+    report += `${divider}\n`
+    report += `\n`
     
     if (addressType === 'EVM') {
         report += `Honeypot           : ${analysis.securityFlags.honeypot ? '🔴 Detected' : '✅ None'}\n`
@@ -1897,32 +1905,39 @@ function generateReport(
     } else {
         report += `Holders            : 👥 Unknown\n`
     }
+    report += `\n`
     
     // Missing Data Warning
     if (analysis.dataConfidence.missingFields.length > 0 && analysis.dataConfidence.percentage < 70) {
-        report += `\n⚠️ Some on-chain data unavailable\n`
+        report += `⚠️ Some on-chain data unavailable\n`
+        report += `\n`
     }
     
     // Final Verdict
-    report += `\n📌 FINAL VERDICT\n${divider}\n`
-    report += `${riskEmoji} ${analysis.riskLevel} RISK\n\n`
+    report += `📌 FINAL VERDICT\n`
+    report += `${divider}\n`
+    report += `\n`
+    report += `${riskEmoji} ${analysis.riskLevel} RISK\n`
+    report += `\n`
     
     const bullets = formatVerdictBullets(analysis.verdict, analysis.warnings, analysis.securityFlags, tokenData.tokenAge)
     bullets.forEach(bullet => {
         report += `• ${bullet}\n`
     })
+    report += `\n`
     
     // Recommendation
     if (analysis.riskLevel === 'HIGH') {
-        report += `\nDo NOT interact unless risk is fully understood.\n`
+        report += `Do NOT interact unless risk is fully understood.\n`
     } else if (analysis.riskLevel === 'MEDIUM') {
-        report += `\nStandard market risk — proceed cautiously.\n`
+        report += `Standard market risk — proceed cautiously.\n`
     } else {
-        report += `\nLower risk profile — standard due diligence recommended.\n`
+        report += `Lower risk profile — standard due diligence recommended.\n`
     }
+    report += `\n`
     
     // Disclaimer
-    report += `\n${divider}\n`
+    report += `${divider}\n`
     report += `Disclaimer:\n`
     report += `Educational use only. Not financial advice.\n`
     
