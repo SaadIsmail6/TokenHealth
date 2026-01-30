@@ -1,7 +1,7 @@
 import { makeTownsBot } from '@towns-protocol/bot'
 import { hexToBytes } from 'viem'
 import commands from './commands'
-import { hasPaidAccess, grantAccess, PAYMENT_PRICE_USDC } from './payments'
+import { hasPaidAccess, grantAccess, getAccessInfo, MINIMUM_TIP_USDC, MINIMUM_TIP_WEI } from './payments'
 
 // ────────────────────────────────────────────────────────────────────────────────
 // TOKENHEALTH v2.0 - SIMPLE, RELIABLE SECURITY SCANNER
@@ -1537,9 +1537,9 @@ function generateBasicReport(
     // Payment unlock message
     report += `─────────── 🔒 Advanced Report Locked ───────────\n\n`
     report += `This is a basic risk summary. Full TokenHealth report is locked.\n\n`
-    report += `**To unlock full analysis:**\n`
-    report += `• Tip this bot ${PAYMENT_PRICE_USDC} USDC\n`
-    report += `• Or use payment interaction below\n\n`
+    report += `**To unlock full access for 30 days:**\n`
+    report += `• Tip this bot at least ${MINIMUM_TIP_USDC} USDC\n`
+    report += `• One tip unlocks full reports on ALL tokens for 30 days\n\n`
     report += `**Full report includes:**\n`
     report += `• Complete security checks breakdown\n`
     report += `• Detailed liquidity & market data\n`
@@ -2180,8 +2180,8 @@ async function analyzeToken(address: string, userId?: string, userHasPaidAccess?
             warnings: ['Partial analysis completed. Some data sources unavailable.']
         }
         
-        // Check payment access for safe fallback
-        const userHasAccess = userHasPaidAccess !== undefined ? userHasPaidAccess : (userId ? hasPaidAccess(userId, address) : false)
+        // Check payment access for safe fallback (user-level, not token-specific)
+        const userHasAccess = userHasPaidAccess !== undefined ? userHasPaidAccess : (userId ? hasPaidAccess(userId) : false)
         
         if (userHasAccess) {
             return generateReport(safeTokenData, safeAnalysis, addressType)
@@ -2203,89 +2203,76 @@ const bot = await makeTownsBot(process.env.APP_PRIVATE_DATA!, process.env.JWT_SE
 // PAYMENT HANDLERS
 // ============================================================================
 
-// Store pending token addresses for payment tracking
-const pendingPayments = new Map<string, string>() // messageId -> tokenAddress
-
-// Handle tips - grant access immediately and send full report
+// Handle tips - validate minimum amount and grant 30-day access
 bot.onTip(async (handler, event) => {
     try {
-        const messageId = event.messageId
-        const tokenAddress = pendingPayments.get(messageId)
+        // Check if tip meets minimum requirement (0.25 USDC)
+        const tipAmount = event.amount
+        const hasMinimumTip = tipAmount >= MINIMUM_TIP_WEI
         
-        if (tokenAddress) {
-            // Grant access for this specific token
-            grantAccess(event.userId, tokenAddress, 'tip')
-            pendingPayments.delete(messageId)
-            
-            // Immediately send full report
+        if (!hasMinimumTip) {
             await handler.sendMessage(
                 event.channelId,
-                `✅ Payment received! Unlocking full report...`
+                `⚠️ Tip received, but it's below the minimum amount.\n\n` +
+                `**Minimum tip:** ${MINIMUM_TIP_USDC} USDC for 30-day full access\n` +
+                `**Your tip:** Less than minimum\n\n` +
+                `Please tip at least ${MINIMUM_TIP_USDC} USDC to unlock full TokenHealth access for 30 days.`
             )
-            
-            // Re-analyze with full access
-            const fullReport = await analyzeToken(tokenAddress, event.userId, true)
-            await handler.sendMessage(event.channelId, fullReport)
-        } else {
-            // General tip (not tied to a specific analysis) - grant access to any token
+            return
+        }
+        
+        // Check if user already has active access
+        const accessInfo = getAccessInfo(event.userId)
+        
+        if (accessInfo.hasAccess) {
             await handler.sendMessage(
                 event.channelId,
-                `✅ Payment received! Your TokenHealth access has been unlocked.\n\n` +
-                `Use \`/health <address>\` to get full reports on any token.`
+                `✅ Tip received! Thank you for your support.\n\n` +
+                `You already have active access (${accessInfo.daysRemaining} days remaining).\n` +
+                `Your access will be extended by 30 days from now.`
+            )
+        } else {
+            await handler.sendMessage(
+                event.channelId,
+                `✅ Payment received! Unlocking full TokenHealth access...`
             )
         }
+        
+        // Grant 30-day access (or extend existing)
+        grantAccess(event.userId, 'tip')
+        
+        // Get updated access info
+        const newAccessInfo = getAccessInfo(event.userId)
+        
+        await handler.sendMessage(
+            event.channelId,
+            `🎉 **Full access unlocked for 30 days!**\n\n` +
+            `You now have access to:\n` +
+            `• Complete security analysis reports\n` +
+            `• Detailed liquidity & market data\n` +
+            `• All available risk indicators\n` +
+            `• Contract verification details\n\n` +
+            `**Access expires:** ${newAccessInfo.daysRemaining} days from now\n\n` +
+            `Use \`/health <address>\` to analyze any token with full reports.\n\n` +
+            `⚠️ TokenHealth provides automated risk indicators only. Not financial advice.`
+        )
     } catch (error) {
         console.error('[Payment] Tip handler error:', error)
         await handler.sendMessage(
             event.channelId,
-            `✅ Payment received! However, there was an error generating the full report. Please try \`/health <address>\` again.`
+            `✅ Payment received! However, there was an error processing your access. Please contact support.`
         )
     }
 })
 
-// Handle interaction responses (transaction payments)
-bot.onInteractionResponse(async (handler, event) => {
-    try {
-        if (event.response.payload.content?.case === 'transaction') {
-            const tx = event.response.payload.content.value
-            
-            // Check if this is an unlock request
-            if (tx.requestId?.startsWith('unlock-')) {
-                // Extract userId and token from requestId: "unlock-{userId}-{tokenAddress}-{timestamp}"
-                const parts = tx.requestId.split('-')
-                if (parts.length >= 3) {
-                    const userId = parts[1]
-                    const tokenAddress = parts.slice(2, -1).join('-') // Handle addresses with multiple dashes
-                    
-                    // Grant access for this specific token
-                    grantAccess(userId, tokenAddress, 'interaction')
-                    
-                    await handler.sendMessage(
-                        event.channelId,
-                        `✅ Payment confirmed! Full report unlocked for this token.\n\n` +
-                        `Use \`/health ${tokenAddress}\` again to see the complete analysis.`
-                    )
-                } else if (parts.length >= 2) {
-                    // Fallback: grant general access
-                    await handler.sendMessage(
-                        event.channelId,
-                        `✅ Payment confirmed! Your TokenHealth access has been unlocked.\n\n` +
-                        `Use \`/health <address>\` to get full reports on any token.`
-                    )
-                }
-            }
-        }
-    } catch (error) {
-        console.error('[Payment] Interaction response error:', error)
-    }
-})
+// Note: Payment interaction responses removed - using tip-only system for simplicity
 
 // Help command
 bot.onSlashCommand('help', async (handler, event) => {
     const helpMessage = `🩺 **TokenHealth v2.0** - Production Security Analyzer
 
-**What it does:**
-TokenHealth is a blockchain security assistant that analyzes tokens for safety risks. It checks honeypots, owner privileges, liquidity, contract verification, and more.
+**What TokenHealth does:**
+TokenHealth is a blockchain security assistant that performs automated risk analysis on tokens. It checks for honeypots, owner privileges, liquidity, contract verification, and other risk indicators.
 
 **Supported chains:**
 • EVM: Ethereum, BSC, Base, Arbitrum, Polygon, Optimism
@@ -2295,6 +2282,36 @@ TokenHealth is a blockchain security assistant that analyzes tokens for safety r
 \`/health <address>\` - Analyze any token contract address
 Or just mention me with an address!
 
+**Free Features (Always Available):**
+• Basic risk summary
+• Health score & risk level (LOW / MEDIUM / HIGH)
+• Critical security flags (honeypot, owner privileges, etc.)
+• Basic verdict
+
+**Full Access (Requires Tip):**
+• Complete security checks breakdown
+• Detailed liquidity & market data
+• Contract verification status
+• Holder distribution analysis
+• Detailed risk explanations
+• Missing data breakdown
+
+**How to Unlock Full Access:**
+💰 **Tip at least ${MINIMUM_TIP_USDC} USDC** to unlock full reports for **30 days**
+
+**What you get:**
+• One tip unlocks full access to ALL tokens for 30 days
+• No repeated payment prompts during active period
+• Access expires after 30 days (you'll be notified when it's about to expire)
+• Tip again anytime to extend your access
+
+**Important:**
+• Tip guarantees content access, NOT safety or profits
+• TokenHealth provides automated risk indicators only
+• This is informational only - NOT financial advice
+• No guarantees, approvals, or profit claims are made
+• Always DYOR (Do Your Own Research) before interacting with any token
+
 **Safety Features:**
 ✅ Multi-source data verification
 ✅ Honeypot detection (EVM)
@@ -2302,11 +2319,6 @@ Or just mention me with an address!
 ✅ Liquidity & age verification
 ✅ Data confidence scoring
 ✅ Safety-first approach
-
-**Important:**
-🔴 This is informational only - NOT financial advice
-🔴 Read-only analysis - no trading or wallet access
-🔴 Always DYOR before interacting with any token
 
 **Principles:**
 • Missing data = Higher risk (never lower)
@@ -2334,16 +2346,21 @@ bot.onSlashCommand('health', async (handler, event) => {
     // Send analyzing message
     await handler.sendMessage(event.channelId, '🔍 Analyzing token... This may take a few seconds.')
     
-    // Check payment access
-    const hasAccess = hasPaidAccess(event.userId, query)
+    // Check payment access (user-level, not token-specific)
+    const hasAccess = hasPaidAccess(event.userId)
     const report = await analyzeToken(query, event.userId, hasAccess)
     
-    // Send report and store message ID for payment tracking
-    const reportMessage = await handler.sendMessage(event.channelId, report)
+    await handler.sendMessage(event.channelId, report)
     
-    // Store token address with message ID for tip tracking
-    if (!hasAccess && reportMessage?.eventId) {
-        pendingPayments.set(reportMessage.eventId, query)
+    // Show access status if user has access
+    if (hasAccess) {
+        const accessInfo = getAccessInfo(event.userId)
+        if (accessInfo.daysRemaining !== null && accessInfo.daysRemaining <= 7) {
+            await handler.sendMessage(
+                event.channelId,
+                `ℹ️ Your full access expires in ${accessInfo.daysRemaining} days. Tip again to extend your access.`
+            )
+        }
     }
 })
 
@@ -2374,44 +2391,20 @@ bot.onMessage(async (handler, event) => {
     
     await handler.sendMessage(event.channelId, '🔍 Analyzing token...')
     
-    // Check payment access
-    const hasAccess = hasPaidAccess(event.userId, address)
+    // Check payment access (user-level, not token-specific)
+    const hasAccess = hasPaidAccess(event.userId)
     const report = await analyzeToken(address, event.userId, hasAccess)
     
-    // Send report and store message ID for payment tracking
-    const reportMessage = await handler.sendMessage(event.channelId, report)
+    await handler.sendMessage(event.channelId, report)
     
-    // Store token address with message ID for tip tracking
-    if (!hasAccess && reportMessage?.eventId) {
-        pendingPayments.set(reportMessage.eventId, address)
-    }
-    
-    // If no access, send payment interaction request
-    if (!hasAccess) {
-        try {
-            // Store token address for payment tracking (replace dashes in address for requestId)
-            const tokenAddressForId = address.replace(/-/g, '_')
-            const requestId = `unlock-${event.userId}-${tokenAddressForId}-${Date.now()}`
-            
-            await handler.sendInteractionRequest(event.channelId, {
-                case: 'transaction',
-                value: {
-                    id: requestId,
-                    title: `Unlock Full Report - ${PAYMENT_PRICE_USDC} USDC`,
-                    content: {
-                        case: 'evm',
-                        value: {
-                            chainId: '8453', // Base chain
-                            to: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913' as `0x${string}`, // USDC on Base
-                            value: '0',
-                            data: '0x' as `0x${string}`,
-                            signerWallet: undefined
-                        }
-                    }
-                }
-            }, hexToBytes(event.userId as `0x${string}`))
-        } catch (error) {
-            console.error('[Payment] Failed to send interaction request:', error)
+    // Show access status if user has access
+    if (hasAccess) {
+        const accessInfo = getAccessInfo(event.userId)
+        if (accessInfo.daysRemaining !== null && accessInfo.daysRemaining <= 7) {
+            await handler.sendMessage(
+                event.channelId,
+                `ℹ️ Your full access expires in ${accessInfo.daysRemaining} days. Tip again to extend your access.`
+            )
         }
     }
 })
