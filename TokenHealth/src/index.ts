@@ -852,18 +852,28 @@ async function fetchOnChainTokenMetadata(address: string, chain: string): Promis
             }
         ] as const
         
-        // Fetch name and symbol in parallel with timeout
+        // Fetch name and symbol in parallel with timeout (3 second max)
+        const timeoutPromise = new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('On-chain call timeout')), 3000)
+        )
+        
         const [nameResult, symbolResult] = await Promise.allSettled([
-            publicClient.readContract({
-                address: address as `0x${string}`,
-                abi: erc20Abi,
-                functionName: 'name'
-            }).catch(() => null),
-            publicClient.readContract({
-                address: address as `0x${string}`,
-                abi: erc20Abi,
-                functionName: 'symbol'
-            }).catch(() => null)
+            Promise.race([
+                publicClient.readContract({
+                    address: address as `0x${string}`,
+                    abi: erc20Abi,
+                    functionName: 'name'
+                }),
+                timeoutPromise
+            ]).catch(() => null),
+            Promise.race([
+                publicClient.readContract({
+                    address: address as `0x${string}`,
+                    abi: erc20Abi,
+                    functionName: 'symbol'
+                }),
+                timeoutPromise
+            ]).catch(() => null)
         ])
         
         const name = nameResult.status === 'fulfilled' && nameResult.value ? String(nameResult.value).trim() : null
@@ -2048,12 +2058,12 @@ async function analyzeToken(address: string, userId?: string, userHasPaidAccess?
             
             // ============================================================================
             // ON-CHAIN FIRST: Fetch token metadata directly from contract
+            // Run in parallel with other API calls to avoid blocking
             // ============================================================================
             // This ensures accurate metadata for new tokens before indexers update
-            const onChainMetadata = await fetchOnChainTokenMetadata(tokenToAnalyze, chain)
-            
-            // Fetch all other data in parallel (using tokenToAnalyze, not original address)
-            const [goPlus, explorer, dex] = await Promise.all([
+            // Fetch all data in parallel (including on-chain metadata) for faster response
+            const [onChainMetadata, goPlus, explorer, dex] = await Promise.all([
+                fetchOnChainTokenMetadata(tokenToAnalyze, chain), // Run in parallel, not sequential
                 fetchGoPlusData(tokenToAnalyze, chain),
                 fetchExplorerData(tokenToAnalyze, chain),
                 fetchDexscreenerData(tokenToAnalyze) // Will find pair for this token
