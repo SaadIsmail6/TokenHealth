@@ -1,5 +1,7 @@
 import { makeTownsBot } from '@towns-protocol/bot'
+import { hexToBytes } from 'viem'
 import commands from './commands'
+import { hasPaidAccess, grantAccess, PAYMENT_PRICE_USDC } from './payments'
 
 // ────────────────────────────────────────────────────────────────────────────────
 // TOKENHEALTH v2.0 - SIMPLE, RELIABLE SECURITY SCANNER
@@ -1492,6 +1494,70 @@ function generateVerdict(
 // REPORT GENERATOR
 // ============================================================================
 
+/**
+ * Generate basic (free) report - risk summary only
+ */
+function generateBasicReport(
+    tokenData: TokenData,
+    analysis: RiskAnalysis,
+    addressType: string
+): string {
+    const riskEmoji = {
+        'HIGH': '🔴',
+        'MEDIUM': '⚠️',
+        'LOW': '🟢'
+    }
+    
+    let report = '🩺 TokenHealth - Basic Risk Summary\n\n'
+    report += `Token: ${tokenData.name || 'New Token'}\n`
+    report += `Symbol: ${tokenData.symbol || 'NEW'}\n`
+    report += `Chain: ${tokenData.chain}\n`
+    report += `Address: \`${tokenData.address}\`\n\n`
+    
+    report += `Health Score: ${analysis.healthScore}/100\n`
+    report += `Risk Level: ${riskEmoji[analysis.riskLevel]} ${analysis.riskLevel}\n`
+    report += `Data Confidence: ${analysis.dataConfidence.level} (${analysis.dataConfidence.percentage}%)\n\n`
+    
+    // Critical flags only
+    if (analysis.securityFlags.honeypot) {
+        report += `🔴 CRITICAL: Honeypot detected\n`
+    }
+    if (analysis.securityFlags.ownerPrivileges) {
+        report += `🔴 CRITICAL: Dangerous owner privileges\n`
+    }
+    if (analysis.securityFlags.mintAuthority) {
+        report += `🔴 CRITICAL: Active mint authority\n`
+    }
+    if (analysis.securityFlags.noLiquidity) {
+        report += `🔴 CRITICAL: No liquidity detected\n`
+    }
+    
+    report += `\n${analysis.verdict}\n\n`
+    
+    // Payment unlock message
+    report += `─────────── 🔒 Advanced Report Locked ───────────\n\n`
+    report += `This is a basic risk summary. Full TokenHealth report is locked.\n\n`
+    report += `**To unlock full analysis:**\n`
+    report += `• Tip this bot ${PAYMENT_PRICE_USDC} USDC\n`
+    report += `• Or use payment interaction below\n\n`
+    report += `**Full report includes:**\n`
+    report += `• Complete security checks breakdown\n`
+    report += `• Detailed liquidity & market data\n`
+    report += `• Contract verification status\n`
+    report += `• Holder distribution analysis\n`
+    report += `• Detailed risk explanations\n\n`
+    report += `\n─────────── Disclaimer ───────────\n\n`
+    report += `⚠️ This is informational only - NOT financial advice.\n`
+    report += `TokenHealth provides automated risk indicators only.\n`
+    report += `No guarantees, approvals, or profit claims are made.\n`
+    report += `Always DYOR before interacting with any token.`
+    
+    return report
+}
+
+/**
+ * Generate full (paid) report - complete analysis
+ */
 function generateReport(
     tokenData: TokenData,
     analysis: RiskAnalysis,
@@ -1578,9 +1644,13 @@ function generateReport(
         })
     }
     
-    // Footer
-    report += `\nNot financial advice. TokenHealth provides automated risk analysis only. Always DYOR.\n`
-    report += `TokenHealth provides information only and does not facilitate trading or gambling.`
+    // Footer with halal-safe language
+    report += `\n─────────── Disclaimer ───────────\n\n`
+    report += `⚠️ This is informational only - NOT financial advice.\n`
+    report += `TokenHealth provides automated risk indicators and on-chain data analysis only.\n`
+    report += `No guarantees, approvals, or profit claims are made.\n`
+    report += `Always DYOR (Do Your Own Research) before interacting with any token.\n`
+    report += `TokenHealth does not facilitate trading or gambling.`
     
     return report
 }
@@ -1589,7 +1659,7 @@ function generateReport(
 // MAIN ANALYSIS FUNCTION
 // ============================================================================
 
-async function analyzeToken(address: string): Promise<string> {
+async function analyzeToken(address: string, userId?: string, userHasPaidAccess?: boolean): Promise<string> {
     // GLOBAL RULE 1: Never crash - wrap everything in try/catch
     try {
         // Validate address format
@@ -1997,8 +2067,14 @@ async function analyzeToken(address: string): Promise<string> {
                 warnings
             }
             
-            // Generate report
-            return generateReport(tokenData, analysis, addressType)
+            // Check payment access - use basic report if no access
+            const userHasAccess = userHasPaidAccess !== undefined ? userHasPaidAccess : (userId ? hasPaidAccess(userId, tokenToAnalyze) : false)
+            
+            if (userHasAccess) {
+                return generateReport(tokenData, analysis, addressType)
+            } else {
+                return generateBasicReport(tokenData, analysis, addressType)
+            }
             
         } catch (analysisError) {
             // GLOBAL RULE 9: Safe default behavior if everything fails
@@ -2104,7 +2180,14 @@ async function analyzeToken(address: string): Promise<string> {
             warnings: ['Partial analysis completed. Some data sources unavailable.']
         }
         
-        return generateReport(safeTokenData, safeAnalysis, addressType)
+        // Check payment access for safe fallback
+        const userHasAccess = userHasPaidAccess !== undefined ? userHasPaidAccess : (userId ? hasPaidAccess(userId, address) : false)
+        
+        if (userHasAccess) {
+            return generateReport(safeTokenData, safeAnalysis, addressType)
+        } else {
+            return generateBasicReport(safeTokenData, safeAnalysis, addressType)
+        }
     }
 }
 
@@ -2114,6 +2197,79 @@ async function analyzeToken(address: string): Promise<string> {
 
 const bot = await makeTownsBot(process.env.APP_PRIVATE_DATA!, process.env.JWT_SECRET!, {
     commands,
+})
+
+// ============================================================================
+// PAYMENT HANDLERS
+// ============================================================================
+
+// Store pending token addresses for payment tracking
+const pendingPayments = new Map<string, string>() // messageId -> tokenAddress
+
+// Handle tips - grant access immediately
+bot.onTip(async (handler, event) => {
+    try {
+        const messageId = event.messageId
+        const tokenAddress = pendingPayments.get(messageId) || 'any' // Default to 'any' if not tracked
+        
+        // Grant access for this token (or all tokens if 'any')
+        if (tokenAddress !== 'any') {
+            grantAccess(event.userId, tokenAddress, 'tip')
+            pendingPayments.delete(messageId)
+            
+            await handler.sendMessage(
+                event.channelId,
+                `✅ Payment received! Full report unlocked for this token.\n\n` +
+                `Use \`/health ${tokenAddress}\` again to see the complete analysis.`
+            )
+        } else {
+            // General tip - grant access to any token
+            await handler.sendMessage(
+                event.channelId,
+                `✅ Payment received! Your TokenHealth access has been unlocked.\n\n` +
+                `Use \`/health <address>\` to get full reports on any token.`
+            )
+        }
+    } catch (error) {
+        console.error('[Payment] Tip handler error:', error)
+    }
+})
+
+// Handle interaction responses (transaction payments)
+bot.onInteractionResponse(async (handler, event) => {
+    try {
+        if (event.response.payload.content?.case === 'transaction') {
+            const tx = event.response.payload.content.value
+            
+            // Check if this is an unlock request
+            if (tx.requestId?.startsWith('unlock-')) {
+                // Extract userId and token from requestId: "unlock-{userId}-{tokenAddress}-{timestamp}"
+                const parts = tx.requestId.split('-')
+                if (parts.length >= 3) {
+                    const userId = parts[1]
+                    const tokenAddress = parts.slice(2, -1).join('-') // Handle addresses with multiple dashes
+                    
+                    // Grant access for this specific token
+                    grantAccess(userId, tokenAddress, 'interaction')
+                    
+                    await handler.sendMessage(
+                        event.channelId,
+                        `✅ Payment confirmed! Full report unlocked for this token.\n\n` +
+                        `Use \`/health ${tokenAddress}\` again to see the complete analysis.`
+                    )
+                } else if (parts.length >= 2) {
+                    // Fallback: grant general access
+                    await handler.sendMessage(
+                        event.channelId,
+                        `✅ Payment confirmed! Your TokenHealth access has been unlocked.\n\n` +
+                        `Use \`/health <address>\` to get full reports on any token.`
+                    )
+                }
+            }
+        }
+    } catch (error) {
+        console.error('[Payment] Interaction response error:', error)
+    }
 })
 
 // Help command
@@ -2200,8 +2356,41 @@ bot.onMessage(async (handler, event) => {
     }
     
     await handler.sendMessage(event.channelId, '🔍 Analyzing token...')
-    const report = await analyzeToken(address)
+    
+    // Check payment access
+    const hasAccess = hasPaidAccess(event.userId, address)
+    const report = await analyzeToken(address, event.userId, hasAccess)
+    
     await handler.sendMessage(event.channelId, report)
+    
+    // If no access, send payment interaction request
+    if (!hasAccess) {
+        try {
+            // Store token address for payment tracking (replace dashes in address for requestId)
+            const tokenAddressForId = address.replace(/-/g, '_')
+            const requestId = `unlock-${event.userId}-${tokenAddressForId}-${Date.now()}`
+            
+            await handler.sendInteractionRequest(event.channelId, {
+                case: 'transaction',
+                value: {
+                    id: requestId,
+                    title: `Unlock Full Report - ${PAYMENT_PRICE_USDC} USDC`,
+                    content: {
+                        case: 'evm',
+                        value: {
+                            chainId: '8453', // Base chain
+                            to: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913' as `0x${string}`, // USDC on Base
+                            value: '0',
+                            data: '0x' as `0x${string}`,
+                            signerWallet: undefined
+                        }
+                    }
+                }
+            }, hexToBytes(event.userId as `0x${string}`))
+        } catch (error) {
+            console.error('[Payment] Failed to send interaction request:', error)
+        }
+    }
 })
 
 // ============================================================================
