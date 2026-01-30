@@ -1751,15 +1751,21 @@ function generateBasicReport(
     const divider = '━━━━━━━━━━━━━━━━━━━━━━'
     const riskEmoji = getRiskEmoji(analysis.riskLevel)
     
-    let report = `🛡️ TOKENHEALTH SECURITY REPORT\n${divider}\n`
+    let report = `🛡️ TOKENHEALTH SECURITY REPORT\n`
+    report += `\n`
+    report += `${divider}\n`
+    report += `\n`
     
     // Token Info
     report += `🧬 Token      : ${tokenData.name || 'Unknown'}\n`
     report += `⛓️ Chain      : ${tokenData.chain}\n`
-    report += `📍 Address    : ${shortenAddress(tokenData.address)}\n\n`
+    report += `📍 Address    : ${shortenAddress(tokenData.address)}\n`
+    report += `\n`
     
     // Risk Summary
-    report += `📊 RISK SUMMARY\n${divider}\n`
+    report += `📊 RISK SUMMARY\n`
+    report += `\n`
+    report += `${divider}\n`
     report += `Score        : ${analysis.healthScore}/100\n`
     report += `Risk Level   : ${riskEmoji} ${analysis.riskLevel}\n`
     report += `Confidence   : ${analysis.dataConfidence.percentage}%\n\n`
