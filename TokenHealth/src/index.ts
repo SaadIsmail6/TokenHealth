@@ -1765,7 +1765,10 @@ function generateBasicReport(
     report += `Confidence   : ${analysis.dataConfidence.percentage}%\n\n`
     
     // Security Checks (basic view)
-    report += `🔍 SECURITY CHECKS\n${divider}\n`
+    report += `🔍 SECURITY CHECKS\n`
+    report += `\n`
+    report += `${divider}\n`
+    report += `\n`
     
     if (addressType === 'EVM') {
         report += `Honeypot           : ${analysis.securityFlags.honeypot ? '🔴 Detected' : '✅ None'}\n`
@@ -1801,7 +1804,11 @@ function generateBasicReport(
     }
     
     // Final Verdict
-    report += `\n📌 FINAL VERDICT\n${divider}\n`
+    report += `\n`
+    report += `📌 FINAL VERDICT\n`
+    report += `\n`
+    report += `${divider}\n`
+    report += `\n`
     report += `${riskEmoji} ${analysis.riskLevel} RISK\n\n`
     
     const bullets = formatVerdictBullets(analysis.verdict, analysis.warnings, analysis.securityFlags, tokenData.tokenAge)
@@ -1824,11 +1831,15 @@ function generateBasicReport(
     }
     
     // Payment unlock message
-    report += `\n${divider}\n`
+    report += `\n`
+    report += `${divider}\n`
+    report += `\n`
     report += `🔒 Full report locked. Tip ${MINIMUM_TIP_USDC} USDC to unlock detailed analysis.\n`
+    report += `\n`
     
     // Disclaimer
-    report += `\n${divider}\n`
+    report += `${divider}\n`
+    report += `\n`
     report += `Disclaimer:\n`
     report += `Educational use only. Not financial advice.\n`
     
@@ -1848,6 +1859,7 @@ function generateReport(
     const riskEmoji = getRiskEmoji(analysis.riskLevel)
     
     let report = `🛡️ TOKENHEALTH SECURITY REPORT\n`
+    report += `\n`
     report += `${divider}\n`
     report += `\n`
     
@@ -1859,6 +1871,7 @@ function generateReport(
     
     // Risk Summary
     report += `📊 RISK SUMMARY\n`
+    report += `\n`
     report += `${divider}\n`
     report += `\n`
     report += `Score        : ${analysis.healthScore}/100\n`
@@ -1868,6 +1881,7 @@ function generateReport(
     
     // Security Checks
     report += `🔍 SECURITY CHECKS\n`
+    report += `\n`
     report += `${divider}\n`
     report += `\n`
     
@@ -1914,7 +1928,9 @@ function generateReport(
     }
     
     // Final Verdict
+    report += `\n`
     report += `📌 FINAL VERDICT\n`
+    report += `\n`
     report += `${divider}\n`
     report += `\n`
     report += `${riskEmoji} ${analysis.riskLevel} RISK\n`
@@ -1938,6 +1954,7 @@ function generateReport(
     
     // Disclaimer
     report += `${divider}\n`
+    report += `\n`
     report += `Disclaimer:\n`
     report += `Educational use only. Not financial advice.\n`
     
