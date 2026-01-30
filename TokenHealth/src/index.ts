@@ -1758,7 +1758,9 @@ function generateBasicReport(
     
     // Token Info
     report += `🧬 Token      : ${tokenData.name || 'Unknown'}\n`
+    report += `\n`
     report += `⛓️ Chain      : ${tokenData.chain}\n`
+    report += `\n`
     report += `📍 Address    : ${shortenAddress(tokenData.address)}\n`
     report += `\n`
     
@@ -1766,9 +1768,13 @@ function generateBasicReport(
     report += `📊 RISK SUMMARY\n`
     report += `\n`
     report += `${divider}\n`
+    report += `\n`
     report += `Score        : ${analysis.healthScore}/100\n`
+    report += `\n`
     report += `Risk Level   : ${riskEmoji} ${analysis.riskLevel}\n`
-    report += `Confidence   : ${analysis.dataConfidence.percentage}%\n\n`
+    report += `\n`
+    report += `Confidence   : ${analysis.dataConfidence.percentage}%\n`
+    report += `\n`
     
     // Security Checks (basic view)
     report += `🔍 SECURITY CHECKS\n`
