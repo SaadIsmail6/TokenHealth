@@ -41,6 +41,9 @@ coverage/
 # OS
 .DS_Store
 Thumbs.db
+
+# Persistent storage (contains user access data)
+TokenHealth/access_grants.json
 desktop.ini
 
 # Lock files (optional - you may want to commit these)

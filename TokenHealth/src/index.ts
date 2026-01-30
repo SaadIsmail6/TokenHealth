@@ -1674,164 +1674,257 @@ function generateVerdict(
 // ============================================================================
 
 /**
+ * Helper: Shorten address for display
+ */
+function shortenAddress(address: string): string {
+    if (!address || address.length < 10) return address
+    return `${address.slice(0, 6)}...${address.slice(-4)}`
+}
+
+/**
+ * Helper: Format risk level emoji
+ */
+function getRiskEmoji(riskLevel: 'LOW' | 'MEDIUM' | 'HIGH'): string {
+    return riskLevel === 'LOW' ? '🟢' : riskLevel === 'MEDIUM' ? '🟡' : '🔴'
+}
+
+/**
+ * Helper: Format verdict bullets (max 3)
+ */
+function formatVerdictBullets(verdict: string, warnings: string[], securityFlags: SecurityFlags, tokenAge: number | null): string[] {
+    const bullets: string[] = []
+    const allText = [verdict, ...warnings].join(' ').toLowerCase()
+    
+    // Extract key risk factors
+    if (securityFlags.honeypot) {
+        bullets.push('Honeypot risk detected')
+    }
+    if (securityFlags.ownerPrivileges) {
+        bullets.push('Dangerous owner privileges present')
+    }
+    if (securityFlags.mintAuthority) {
+        bullets.push('Active mint authority enabled')
+    }
+    if (securityFlags.noLiquidity) {
+        bullets.push('No liquidity detected')
+    }
+    if (tokenAge !== null && tokenAge < 7) {
+        bullets.push('Token is less than 7 days old')
+    }
+    if (allText.includes('unverified') || allText.includes('not verified')) {
+        bullets.push('Contract not verified')
+    }
+    if (allText.includes('insufficient') || allText.includes('missing data')) {
+        bullets.push('Insufficient on-chain data available')
+    }
+    
+    // If no bullets found, use warnings or verdict snippet
+    if (bullets.length === 0) {
+        if (warnings.length > 0) {
+            warnings.slice(0, 3).forEach(warning => {
+                const cleanWarning = warning.replace(/⚠️|🔴|🟡|🟢/g, '').trim()
+                if (cleanWarning.length > 0 && cleanWarning.length < 80) {
+                    bullets.push(cleanWarning)
+                }
+            })
+        }
+        if (bullets.length === 0 && verdict.length > 0) {
+            const cleanVerdict = verdict.replace(/🔴|🟡|🟢|⚠️/g, '').trim()
+            if (cleanVerdict.length > 0) {
+                bullets.push(cleanVerdict.substring(0, 70))
+            }
+        }
+    }
+    
+    return bullets.slice(0, 3) // Max 3 bullets
+}
+
+/**
  * Generate basic (free) report - risk summary only
+ * Professional format matching security audit tool standards
  */
 function generateBasicReport(
     tokenData: TokenData,
     analysis: RiskAnalysis,
     addressType: string
 ): string {
-    const riskEmoji = {
-        'HIGH': '🔴',
-        'MEDIUM': '⚠️',
-        'LOW': '🟢'
+    const divider = '━━━━━━━━━━━━━━━━━━━━━━'
+    const riskEmoji = getRiskEmoji(analysis.riskLevel)
+    
+    let report = `🛡️ TOKENHEALTH SECURITY REPORT\n${divider}\n`
+    
+    // Token Info
+    report += `🧬 Token      : ${tokenData.name || 'Unknown'}\n`
+    report += `⛓️ Chain      : ${tokenData.chain}\n`
+    report += `📍 Address    : ${shortenAddress(tokenData.address)}\n\n`
+    
+    // Risk Summary
+    report += `📊 RISK SUMMARY\n${divider}\n`
+    report += `Score        : ${analysis.healthScore}/100\n`
+    report += `Risk Level   : ${riskEmoji} ${analysis.riskLevel}\n`
+    report += `Confidence   : ${analysis.dataConfidence.percentage}%\n\n`
+    
+    // Security Checks (basic view)
+    report += `🔍 SECURITY CHECKS\n${divider}\n`
+    
+    if (addressType === 'EVM') {
+        report += `Honeypot           : ${analysis.securityFlags.honeypot ? '🔴 Detected' : '✅ None'}\n`
+        report += `Owner Privileges  : ${analysis.securityFlags.ownerPrivileges ? '❌ Dangerous' : '✅ Safe'}\n`
+        report += `Blacklist          : ${analysis.securityFlags.blacklistAuthority ? '⚠️ Possible' : '✅ None'}\n`
+        report += `Upgradeable        : ${analysis.securityFlags.proxyUpgradeable ? '⚠️ Yes' : '❌ No'}\n`
+    } else {
+        report += `Mint Authority     : ${analysis.securityFlags.mintAuthority ? '🔴 ACTIVE' : '✅ Disabled'}\n`
+        report += `Freeze Authority   : ${analysis.securityFlags.freezeAuthority ? '⚠️ ACTIVE' : '✅ Disabled'}\n`
+        report += `Honeypot           : ⚠️ Unknown\n`
     }
     
-    let report = '🩺 TokenHealth - Basic Risk Summary\n\n'
-    report += `Token: ${tokenData.name || 'New Token'}\n`
-    report += `Symbol: ${tokenData.symbol || 'NEW'}\n`
-    report += `Chain: ${tokenData.chain}\n`
-    report += `Address: \`${tokenData.address}\`\n\n`
-    
-    report += `Health Score: ${analysis.healthScore}/100\n`
-    report += `Risk Level: ${riskEmoji[analysis.riskLevel]} ${analysis.riskLevel}\n`
-    report += `Data Confidence: ${analysis.dataConfidence.level} (${analysis.dataConfidence.percentage}%)\n\n`
-    
-    // Critical flags only
-    if (analysis.securityFlags.honeypot) {
-        report += `🔴 CRITICAL: Honeypot detected\n`
-    }
-    if (analysis.securityFlags.ownerPrivileges) {
-        report += `🔴 CRITICAL: Dangerous owner privileges\n`
-    }
-    if (analysis.securityFlags.mintAuthority) {
-        report += `🔴 CRITICAL: Active mint authority\n`
-    }
-    if (analysis.securityFlags.noLiquidity) {
-        report += `🔴 CRITICAL: No liquidity detected\n`
+    // Liquidity
+    if (tokenData.liquidity !== null && tokenData.liquidity > 0) {
+        const liquidityLevel = tokenData.liquidity >= 100000 ? '💧 Deep' : tokenData.liquidity >= 10000 ? '⚠️ Low' : '❌ None'
+        report += `Liquidity          : ${liquidityLevel}\n`
+    } else {
+        report += `Liquidity          : ⚠️ Unknown\n`
     }
     
-    report += `\n${analysis.verdict}\n\n`
+    // Token Age
+    if (tokenData.tokenAge !== null) {
+        report += `Token Age          : ⏳ ${tokenData.tokenAge} days\n`
+    } else {
+        report += `Token Age          : ⚠️ Unknown\n`
+    }
+    
+    // Holders
+    if (tokenData.holderCount !== null) {
+        report += `Holders            : 👥 ${tokenData.holderCount.toLocaleString()}\n`
+    } else {
+        report += `Holders            : 👥 Unknown\n`
+    }
+    
+    // Final Verdict
+    report += `\n📌 FINAL VERDICT\n${divider}\n`
+    report += `${riskEmoji} ${analysis.riskLevel} RISK\n\n`
+    
+    const bullets = formatVerdictBullets(analysis.verdict, analysis.warnings, analysis.securityFlags, tokenData.tokenAge)
+    bullets.forEach(bullet => {
+        report += `• ${bullet}\n`
+    })
+    
+    // Recommendation
+    if (analysis.riskLevel === 'HIGH') {
+        report += `\nDo NOT interact unless risk is fully understood.\n`
+    } else if (analysis.riskLevel === 'MEDIUM') {
+        report += `\nStandard market risk — proceed cautiously.\n`
+    } else {
+        report += `\nLower risk profile — standard due diligence recommended.\n`
+    }
+    
+    // Missing data warning
+    if (analysis.dataConfidence.percentage < 70) {
+        report += `\n⚠️ Some on-chain data unavailable\n`
+    }
     
     // Payment unlock message
-    report += `─────────── 🔒 Advanced Report Locked ───────────\n\n`
-    report += `This is a basic risk summary. Full TokenHealth report is locked.\n\n`
-    report += `**To unlock full access for 30 days:**\n`
-    report += `• Tip this bot at least ${MINIMUM_TIP_USDC} USDC\n`
-    report += `• One tip unlocks full reports on ALL tokens for 30 days\n\n`
-    report += `**Full report includes:**\n`
-    report += `• Complete security checks breakdown\n`
-    report += `• Detailed liquidity & market data\n`
-    report += `• Contract verification status\n`
-    report += `• Holder distribution analysis\n`
-    report += `• Detailed risk explanations\n\n`
-    report += `\n─────────── Disclaimer ───────────\n\n`
-    report += `⚠️ This is informational only - NOT financial advice.\n`
-    report += `TokenHealth provides automated risk indicators only.\n`
-    report += `No guarantees, approvals, or profit claims are made.\n`
-    report += `Always DYOR before interacting with any token.`
+    report += `\n${divider}\n`
+    report += `🔒 Full report locked. Tip ${MINIMUM_TIP_USDC} USDC to unlock detailed analysis.\n`
+    
+    // Disclaimer
+    report += `\n${divider}\n`
+    report += `Disclaimer:\n`
+    report += `Educational use only. Not financial advice.\n`
     
     return report
 }
 
 /**
  * Generate full (paid) report - complete analysis
+ * Professional format matching security audit tool standards
  */
 function generateReport(
     tokenData: TokenData,
     analysis: RiskAnalysis,
     addressType: string
 ): string {
-    let report = '🩺 TokenHealth Report\n\n'
+    const divider = '━━━━━━━━━━━━━━━━━━━━━━'
+    const riskEmoji = getRiskEmoji(analysis.riskLevel)
+    
+    let report = `🛡️ TOKENHEALTH SECURITY REPORT\n${divider}\n`
     
     // Token Info
-    // METADATA FIX: Never show "Unknown" - use fallback values from tokenData
-    report += `Token: ${tokenData.name || 'New Token'}\n`
-    report += `Symbol: ${tokenData.symbol || 'NEW'}\n`
-    report += `Chain: ${tokenData.chain}\n`
-    report += `Address: \`${tokenData.address}\`\n\n`
+    report += `🧬 Token      : ${tokenData.name || 'Unknown'}\n`
+    report += `⛓️ Chain      : ${tokenData.chain}\n`
+    report += `📍 Address    : ${shortenAddress(tokenData.address)}\n\n`
     
-    // Health Score & Risk
-    const riskEmoji = {
-        'HIGH': '🔴',
-        'MEDIUM': '⚠️',
-        'LOW': '🟢'
-    }
-    
-    report += `Health Score: ${analysis.healthScore}/100\n`
-    report += `Risk Level: ${riskEmoji[analysis.riskLevel]} ${analysis.riskLevel}\n`
-    report += `Data Confidence: ${analysis.dataConfidence.level} (${analysis.dataConfidence.percentage}%)\n\n`
+    // Risk Summary
+    report += `📊 RISK SUMMARY\n${divider}\n`
+    report += `Score        : ${analysis.healthScore}/100\n`
+    report += `Risk Level   : ${riskEmoji} ${analysis.riskLevel}\n`
+    report += `Confidence   : ${analysis.dataConfidence.percentage}%\n\n`
     
     // Security Checks
-    report += '─────────── Security Checks ───────────\n\n'
+    report += `🔍 SECURITY CHECKS\n${divider}\n`
     
     if (addressType === 'EVM') {
-        report += `Honeypot Risk: ${analysis.securityFlags.honeypot ? '🔴 DETECTED' : '✅ None detected'}\n`
-        report += `Owner Privileges: ${analysis.securityFlags.ownerPrivileges ? '🔴 DANGEROUS' : '✅ Safe'}\n`
-        report += `Blacklist Function: ${analysis.securityFlags.blacklistAuthority ? '⚠️ Present' : '✅ None'}\n`
-        report += `Contract Verified: ${tokenData.contractVerified === true ? '✅ Yes' : tokenData.contractVerified === false ? '⚠️ No' : '⚠️ Unknown'}\n`
-        report += `Proxy Upgradeable: ${analysis.securityFlags.proxyUpgradeable ? '⚠️ Yes' : '✅ No'}\n`
+        report += `Honeypot           : ${analysis.securityFlags.honeypot ? '🔴 Detected' : '✅ None'}\n`
+        report += `Owner Privileges  : ${analysis.securityFlags.ownerPrivileges ? '❌ Dangerous' : analysis.securityFlags.ownerPrivileges === false ? '✅ Safe' : '⚠️ Unknown'}\n`
+        report += `Blacklist          : ${analysis.securityFlags.blacklistAuthority ? '⚠️ Possible' : '✅ None'}\n`
+        report += `Upgradeable        : ${analysis.securityFlags.proxyUpgradeable ? '⚠️ Yes' : '❌ No'}\n`
+        report += `Contract Verified  : ${tokenData.contractVerified === true ? '✅ Yes' : tokenData.contractVerified === false ? '⚠️ No' : '⚠️ Unknown'}\n`
     } else if (addressType === 'SOLANA') {
-        report += `Mint Authority: ${analysis.securityFlags.mintAuthority ? '🔴 ACTIVE' : '✅ Disabled'}\n`
-        report += `Freeze Authority: ${analysis.securityFlags.freezeAuthority ? '⚠️ ACTIVE' : '✅ Disabled'}\n`
-        report += `Honeypot Risk: ⚠️ Not supported on Solana\n`
-        report += `Contract Verified: ⚠️ Not applicable on Solana\n`
+        report += `Mint Authority     : ${analysis.securityFlags.mintAuthority ? '🔴 ACTIVE' : '✅ Disabled'}\n`
+        report += `Freeze Authority   : ${analysis.securityFlags.freezeAuthority ? '⚠️ ACTIVE' : '✅ Disabled'}\n`
+        report += `Honeypot           : ⚠️ Unknown\n`
+        report += `Contract Verified  : ⚠️ Not applicable\n`
     }
     
-    // Market Data
-    // LIQUIDITY FIX: Show "Unknown" when data is missing, not "No pool detected"
-    // Missing data increases risk, but we don't assume no liquidity exists
-    report += `\nLiquidity: ${tokenData.liquidity ? `$${tokenData.liquidity.toLocaleString()}` : '⚠️ Unknown (data unavailable)'}\n`
-    
-    if (tokenData.tokenAge !== null) {
-        if (tokenData.tokenAge < 1) {
-            report += `Token Age: 🆕 Just created (minutes/hours ago)\n`
-        } else if (tokenData.tokenAge < 7) {
-            report += `Token Age: 🆕 ${tokenData.tokenAge} day${tokenData.tokenAge > 1 ? 's' : ''} (very new)\n`
-        } else {
-            report += `Token Age: ${tokenData.tokenAge} days\n`
-        }
+    // Liquidity
+    if (tokenData.liquidity !== null && tokenData.liquidity > 0) {
+        const liquidityLevel = tokenData.liquidity >= 100000 ? '💧 Deep' : tokenData.liquidity >= 10000 ? '⚠️ Low' : '❌ None'
+        report += `Liquidity          : ${liquidityLevel}\n`
     } else {
-        report += `Token Age: ⚠️ Age unavailable (treat as high risk)\n`
+        report += `Liquidity          : ⚠️ Unknown\n`
     }
     
-    report += `Holder Count: ${tokenData.holderCount !== null ? tokenData.holderCount.toLocaleString() : '⚠️ Data unavailable'}\n`
+    // Token Age
+    if (tokenData.tokenAge !== null) {
+        report += `Token Age          : ⏳ ${tokenData.tokenAge} days\n`
+    } else {
+        report += `Token Age          : ⚠️ Unknown\n`
+    }
+    
+    // Holders
+    if (tokenData.holderCount !== null) {
+        report += `Holders            : 👥 ${tokenData.holderCount.toLocaleString()}\n`
+    } else {
+        report += `Holders            : 👥 Unknown\n`
+    }
     
     // Missing Data Warning
-    if (analysis.dataConfidence.missingFields.length > 0) {
-        report += `\n⚠️ Missing / Unavailable Data:\n`
-        analysis.dataConfidence.missingFields.forEach(field => {
-            report += `  • ${field}\n`
-        })
+    if (analysis.dataConfidence.missingFields.length > 0 && analysis.dataConfidence.percentage < 70) {
+        report += `\n⚠️ Some on-chain data unavailable\n`
     }
     
-    // Verdict
-    report += `\n─────────── Final Verdict ───────────\n\n`
-    report += `${analysis.verdict}\n`
+    // Final Verdict
+    report += `\n📌 FINAL VERDICT\n${divider}\n`
+    report += `${riskEmoji} ${analysis.riskLevel} RISK\n\n`
     
-    // Warnings
-    if (analysis.warnings.length > 0) {
-        report += `\n`
-        analysis.warnings.forEach(warning => {
-            report += `⚠️ ${warning}\n`
-        })
+    const bullets = formatVerdictBullets(analysis.verdict, analysis.warnings, analysis.securityFlags, tokenData.tokenAge)
+    bullets.forEach(bullet => {
+        report += `• ${bullet}\n`
+    })
+    
+    // Recommendation
+    if (analysis.riskLevel === 'HIGH') {
+        report += `\nDo NOT interact unless risk is fully understood.\n`
+    } else if (analysis.riskLevel === 'MEDIUM') {
+        report += `\nStandard market risk — proceed cautiously.\n`
+    } else {
+        report += `\nLower risk profile — standard due diligence recommended.\n`
     }
     
-    // Penalties Breakdown
-    if (analysis.penalties.length > 0) {
-        report += `\n─────────── Why this score? ───────────\n\n`
-        analysis.penalties.forEach(penalty => {
-            report += `• ${penalty.reason} (−${penalty.points} points)\n`
-        })
-    }
-    
-    // Footer with halal-safe language
-    report += `\n─────────── Disclaimer ───────────\n\n`
-    report += `⚠️ This is informational only - NOT financial advice.\n`
-    report += `TokenHealth provides automated risk indicators and on-chain data analysis only.\n`
-    report += `No guarantees, approvals, or profit claims are made.\n`
-    report += `Always DYOR (Do Your Own Research) before interacting with any token.\n`
-    report += `TokenHealth does not facilitate trading or gambling.`
+    // Disclaimer
+    report += `\n${divider}\n`
+    report += `Disclaimer:\n`
+    report += `Educational use only. Not financial advice.\n`
     
     return report
 }
