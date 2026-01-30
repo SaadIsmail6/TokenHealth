@@ -2492,6 +2492,7 @@ Or just mention me with an address!
 
 **What you get:**
 • One tip unlocks full access to ALL tokens for 30 days
+• Access persists across sessions (you can leave and come back)
 • No repeated payment prompts during active period
 • Access expires after 30 days (you'll be notified when it's about to expire)
 • Tip again anytime to extend your access
@@ -2539,13 +2540,24 @@ bot.onSlashCommand('health', async (handler, event) => {
     
     // Check payment access (user-level, not token-specific)
     const hasAccess = hasPaidAccess(event.userId)
-    const report = await analyzeToken(query, event.userId, hasAccess)
+    const accessInfo = getAccessInfo(event.userId)
     
+    // Check if access has expired
+    if (!hasAccess && accessInfo.expiresAt !== null) {
+        // Access expired - show expiration message
+        await handler.sendMessage(
+            event.channelId,
+            `⏰ **Your 30-day access has expired.**\n\n` +
+            `Tip again to unlock full reports for another 30 days.\n\n` +
+            `Use \`/help\` for more information.`
+        )
+    }
+    
+    const report = await analyzeToken(query, event.userId, hasAccess)
     await handler.sendMessage(event.channelId, report)
     
     // Show access status if user has access
     if (hasAccess) {
-        const accessInfo = getAccessInfo(event.userId)
         if (accessInfo.daysRemaining !== null && accessInfo.daysRemaining <= 7) {
             await handler.sendMessage(
                 event.channelId,
@@ -2584,8 +2596,20 @@ bot.onMessage(async (handler, event) => {
     
     // Check payment access (user-level, not token-specific)
     const hasAccess = hasPaidAccess(event.userId)
-    const report = await analyzeToken(address, event.userId, hasAccess)
+    const accessInfo = getAccessInfo(event.userId)
     
+    // Check if access has expired
+    if (!hasAccess && accessInfo.expiresAt !== null) {
+        // Access expired - show expiration message
+        await handler.sendMessage(
+            event.channelId,
+            `⏰ **Your 30-day access has expired.**\n\n` +
+            `Tip again to unlock full reports for another 30 days.\n\n` +
+            `Use \`/help\` for more information.`
+        )
+    }
+    
+    const report = await analyzeToken(address, event.userId, hasAccess)
     await handler.sendMessage(event.channelId, report)
     
     // Show access status if user has access
