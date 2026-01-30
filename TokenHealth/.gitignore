@@ -31,3 +31,6 @@ coverage/
 # OS
 .DS_Store
 Thumbs.db
+
+# Persistent storage (contains user access data)
+access_grants.json
