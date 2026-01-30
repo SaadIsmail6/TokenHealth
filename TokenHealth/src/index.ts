@@ -2206,24 +2206,28 @@ const bot = await makeTownsBot(process.env.APP_PRIVATE_DATA!, process.env.JWT_SE
 // Store pending token addresses for payment tracking
 const pendingPayments = new Map<string, string>() // messageId -> tokenAddress
 
-// Handle tips - grant access immediately
+// Handle tips - grant access immediately and send full report
 bot.onTip(async (handler, event) => {
     try {
         const messageId = event.messageId
-        const tokenAddress = pendingPayments.get(messageId) || 'any' // Default to 'any' if not tracked
+        const tokenAddress = pendingPayments.get(messageId)
         
-        // Grant access for this token (or all tokens if 'any')
-        if (tokenAddress !== 'any') {
+        if (tokenAddress) {
+            // Grant access for this specific token
             grantAccess(event.userId, tokenAddress, 'tip')
             pendingPayments.delete(messageId)
             
+            // Immediately send full report
             await handler.sendMessage(
                 event.channelId,
-                `✅ Payment received! Full report unlocked for this token.\n\n` +
-                `Use \`/health ${tokenAddress}\` again to see the complete analysis.`
+                `✅ Payment received! Unlocking full report...`
             )
+            
+            // Re-analyze with full access
+            const fullReport = await analyzeToken(tokenAddress, event.userId, true)
+            await handler.sendMessage(event.channelId, fullReport)
         } else {
-            // General tip - grant access to any token
+            // General tip (not tied to a specific analysis) - grant access to any token
             await handler.sendMessage(
                 event.channelId,
                 `✅ Payment received! Your TokenHealth access has been unlocked.\n\n` +
@@ -2232,6 +2236,10 @@ bot.onTip(async (handler, event) => {
         }
     } catch (error) {
         console.error('[Payment] Tip handler error:', error)
+        await handler.sendMessage(
+            event.channelId,
+            `✅ Payment received! However, there was an error generating the full report. Please try \`/health <address>\` again.`
+        )
     }
 })
 
@@ -2326,8 +2334,17 @@ bot.onSlashCommand('health', async (handler, event) => {
     // Send analyzing message
     await handler.sendMessage(event.channelId, '🔍 Analyzing token... This may take a few seconds.')
     
-    const report = await analyzeToken(query)
-    await handler.sendMessage(event.channelId, report)
+    // Check payment access
+    const hasAccess = hasPaidAccess(event.userId, query)
+    const report = await analyzeToken(query, event.userId, hasAccess)
+    
+    // Send report and store message ID for payment tracking
+    const reportMessage = await handler.sendMessage(event.channelId, report)
+    
+    // Store token address with message ID for tip tracking
+    if (!hasAccess && reportMessage?.eventId) {
+        pendingPayments.set(reportMessage.eventId, query)
+    }
 })
 
 // Natural language detection
@@ -2361,7 +2378,13 @@ bot.onMessage(async (handler, event) => {
     const hasAccess = hasPaidAccess(event.userId, address)
     const report = await analyzeToken(address, event.userId, hasAccess)
     
-    await handler.sendMessage(event.channelId, report)
+    // Send report and store message ID for payment tracking
+    const reportMessage = await handler.sendMessage(event.channelId, report)
+    
+    // Store token address with message ID for tip tracking
+    if (!hasAccess && reportMessage?.eventId) {
+        pendingPayments.set(reportMessage.eventId, address)
+    }
     
     // If no access, send payment interaction request
     if (!hasAccess) {
