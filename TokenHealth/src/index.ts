@@ -1778,35 +1778,48 @@ function generateBasicReport(
     
     if (addressType === 'EVM') {
         report += `Honeypot           : ${analysis.securityFlags.honeypot ? '🔴 Detected' : '✅ None'}\n`
+        report += `\n`
         report += `Owner Privileges  : ${analysis.securityFlags.ownerPrivileges ? '❌ Dangerous' : '✅ Safe'}\n`
+        report += `\n`
         report += `Blacklist          : ${analysis.securityFlags.blacklistAuthority ? '⚠️ Possible' : '✅ None'}\n`
+        report += `\n`
         report += `Upgradeable        : ${analysis.securityFlags.proxyUpgradeable ? '⚠️ Yes' : '❌ No'}\n`
+        report += `\n`
     } else {
         report += `Mint Authority     : ${analysis.securityFlags.mintAuthority ? '🔴 ACTIVE' : '✅ Disabled'}\n`
+        report += `\n`
         report += `Freeze Authority   : ${analysis.securityFlags.freezeAuthority ? '⚠️ ACTIVE' : '✅ Disabled'}\n`
+        report += `\n`
         report += `Honeypot           : ⚠️ Unknown\n`
+        report += `\n`
     }
     
     // Liquidity
     if (tokenData.liquidity !== null && tokenData.liquidity > 0) {
         const liquidityLevel = tokenData.liquidity >= 100000 ? '💧 Deep' : tokenData.liquidity >= 10000 ? '⚠️ Low' : '❌ None'
         report += `Liquidity          : ${liquidityLevel}\n`
+        report += `\n`
     } else {
         report += `Liquidity          : ⚠️ Unknown\n`
+        report += `\n`
     }
     
     // Token Age
     if (tokenData.tokenAge !== null) {
         report += `Token Age          : ⏳ ${tokenData.tokenAge} days\n`
+        report += `\n`
     } else {
         report += `Token Age          : ⚠️ Unknown\n`
+        report += `\n`
     }
     
     // Holders
     if (tokenData.holderCount !== null) {
         report += `Holders            : 👥 ${tokenData.holderCount.toLocaleString()}\n`
+        report += `\n`
     } else {
         report += `Holders            : 👥 Unknown\n`
+        report += `\n`
     }
     
     // Final Verdict
@@ -1893,37 +1906,52 @@ function generateReport(
     
     if (addressType === 'EVM') {
         report += `Honeypot           : ${analysis.securityFlags.honeypot ? '🔴 Detected' : '✅ None'}\n`
+        report += `\n`
         report += `Owner Privileges  : ${analysis.securityFlags.ownerPrivileges ? '❌ Dangerous' : analysis.securityFlags.ownerPrivileges === false ? '✅ Safe' : '⚠️ Unknown'}\n`
+        report += `\n`
         report += `Blacklist          : ${analysis.securityFlags.blacklistAuthority ? '⚠️ Possible' : '✅ None'}\n`
+        report += `\n`
         report += `Upgradeable        : ${analysis.securityFlags.proxyUpgradeable ? '⚠️ Yes' : '❌ No'}\n`
+        report += `\n`
         report += `Contract Verified  : ${tokenData.contractVerified === true ? '✅ Yes' : tokenData.contractVerified === false ? '⚠️ No' : '⚠️ Unknown'}\n`
+        report += `\n`
     } else if (addressType === 'SOLANA') {
         report += `Mint Authority     : ${analysis.securityFlags.mintAuthority ? '🔴 ACTIVE' : '✅ Disabled'}\n`
+        report += `\n`
         report += `Freeze Authority   : ${analysis.securityFlags.freezeAuthority ? '⚠️ ACTIVE' : '✅ Disabled'}\n`
+        report += `\n`
         report += `Honeypot           : ⚠️ Unknown\n`
+        report += `\n`
         report += `Contract Verified  : ⚠️ Not applicable\n`
+        report += `\n`
     }
     
     // Liquidity
     if (tokenData.liquidity !== null && tokenData.liquidity > 0) {
         const liquidityLevel = tokenData.liquidity >= 100000 ? '💧 Deep' : tokenData.liquidity >= 10000 ? '⚠️ Low' : '❌ None'
         report += `Liquidity          : ${liquidityLevel}\n`
+        report += `\n`
     } else {
         report += `Liquidity          : ⚠️ Unknown\n`
+        report += `\n`
     }
     
     // Token Age
     if (tokenData.tokenAge !== null) {
         report += `Token Age          : ⏳ ${tokenData.tokenAge} days\n`
+        report += `\n`
     } else {
         report += `Token Age          : ⚠️ Unknown\n`
+        report += `\n`
     }
     
     // Holders
     if (tokenData.holderCount !== null) {
         report += `Holders            : 👥 ${tokenData.holderCount.toLocaleString()}\n`
+        report += `\n`
     } else {
         report += `Holders            : 👥 Unknown\n`
+        report += `\n`
     }
     report += `\n`
     
