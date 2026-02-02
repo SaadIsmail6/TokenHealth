@@ -1756,7 +1756,8 @@ function formatVerdictBullets(verdict: string, warnings: string[], securityFlags
 function generateBasicReport(
     tokenData: TokenData,
     analysis: RiskAnalysis,
-    addressType: string
+    addressType: string,
+    userHasPaidAccess: boolean = false
 ): string {
     const divider = '━━━━━━━━━━━━━━━━━━━━━━'
     const riskEmoji = getRiskEmoji(analysis.riskLevel)
@@ -1865,12 +1866,14 @@ function generateBasicReport(
         report += `\n⚠️ Some on-chain data unavailable\n`
     }
     
-    // Payment unlock message
-    report += `\n`
-    report += `${divider}\n`
-    report += `\n`
-    report += `🔒 Full report locked. Tip ${MINIMUM_TIP_USDC} USDC to unlock detailed analysis.\n`
-    report += `\n`
+    // Payment unlock message (only show for users without paid access)
+    if (!userHasPaidAccess) {
+        report += `\n`
+        report += `${divider}\n`
+        report += `\n`
+        report += `🔒 Full report locked. Tip ${MINIMUM_TIP_USDC} USDC to unlock detailed analysis.\n`
+        report += `\n`
+    }
     
     // Disclaimer
     report += `${divider}\n`
@@ -2434,12 +2437,12 @@ async function analyzeToken(address: string, userId?: string, userHasPaidAccess?
             }
             
             // Check payment access - use basic report if no access
-            const userHasAccess = userHasPaidAccess !== undefined ? userHasPaidAccess : (userId ? hasPaidAccess(userId, tokenToAnalyze) : false)
+            const userHasAccess = userHasPaidAccess !== undefined ? userHasPaidAccess : (userId ? hasPaidAccess(userId) : false)
             
             if (userHasAccess) {
                 return generateReport(tokenData, analysis, addressType)
             } else {
-                return generateBasicReport(tokenData, analysis, addressType)
+                return generateBasicReport(tokenData, analysis, addressType, false)
             }
             
         } catch (analysisError) {
