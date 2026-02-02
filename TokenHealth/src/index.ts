@@ -1904,7 +1904,9 @@ function generateReport(
     
     // Token Info
     report += `🧬 Token      : ${tokenData.name || 'Unknown'}\n`
+    report += `\n`
     report += `⛓️ Chain      : ${tokenData.chain}\n`
+    report += `\n`
     report += `📍 Address    : ${shortenAddress(tokenData.address)}\n`
     report += `\n`
     
@@ -1914,7 +1916,9 @@ function generateReport(
     report += `${divider}\n`
     report += `\n`
     report += `Score        : ${analysis.healthScore}/100\n`
+    report += `\n`
     report += `Risk Level   : ${riskEmoji} ${analysis.riskLevel}\n`
+    report += `\n`
     report += `Confidence   : ${analysis.dataConfidence.percentage}%\n`
     report += `\n`
     
