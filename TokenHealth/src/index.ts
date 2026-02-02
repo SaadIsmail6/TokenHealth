@@ -1891,7 +1891,8 @@ function generateBasicReport(
 function generateReport(
     tokenData: TokenData,
     analysis: RiskAnalysis,
-    addressType: string
+    addressType: string,
+    userHasPaidAccess: boolean = true
 ): string {
     const divider = '━━━━━━━━━━━━━━━━━━━━━━'
     const riskEmoji = getRiskEmoji(analysis.riskLevel)
@@ -2437,11 +2438,17 @@ async function analyzeToken(address: string, userId?: string, userHasPaidAccess?
             }
             
             // Check payment access - use basic report if no access
-            const userHasAccess = userHasPaidAccess !== undefined ? userHasPaidAccess : (userId ? hasPaidAccess(userId) : false)
+            // Verify access from stored state (not session memory)
+            const userHasAccess = userHasPaidAccess !== undefined 
+                ? userHasPaidAccess 
+                : (userId ? hasPaidAccess(userId) : false)
             
+            // Generate appropriate report based on access status
             if (userHasAccess) {
-                return generateReport(tokenData, analysis, addressType)
+                // User has full access - show complete report, NO locked message
+                return generateReport(tokenData, analysis, addressType, true)
             } else {
+                // User does NOT have access - show basic report WITH locked message
                 return generateBasicReport(tokenData, analysis, addressType, false)
             }
             
