@@ -2438,17 +2438,28 @@ async function analyzeToken(address: string, userId?: string, userHasPaidAccess?
             }
             
             // Check payment access - use basic report if no access
-            // Verify access from stored state (not session memory)
-            const userHasAccess = userHasPaidAccess !== undefined 
-                ? userHasPaidAccess 
-                : (userId ? hasPaidAccess(userId) : false)
+            // CRITICAL: Always re-verify from stored state (not session memory)
+            // This ensures access persists across restarts and sessions
+            let userHasAccess: boolean
+            if (userHasPaidAccess !== undefined) {
+                // Use provided access status
+                userHasAccess = userHasPaidAccess
+            } else if (userId) {
+                // Re-check from stored state (persistent storage)
+                userHasAccess = hasPaidAccess(userId)
+            } else {
+                // No userId provided - no access
+                userHasAccess = false
+            }
             
             // Generate appropriate report based on access status
             if (userHasAccess) {
                 // User has full access - show complete report, NO locked message
+                // Explicitly pass true to ensure locked message never appears
                 return generateReport(tokenData, analysis, addressType, true)
             } else {
                 // User does NOT have access - show basic report WITH locked message
+                // Explicitly pass false to show locked message
                 return generateBasicReport(tokenData, analysis, addressType, false)
             }
             
@@ -2502,10 +2513,14 @@ async function analyzeToken(address: string, userId?: string, userHasPaidAccess?
                 warnings: ['Partial analysis completed. Some data sources unavailable.']
             }
             
-            return generateReport(safeTokenData, safeAnalysis, addressType)
+            // Check access for inner error fallback (always re-check from stored state)
+            const innerUserHasAccess = userHasPaidAccess !== undefined 
+                ? userHasPaidAccess 
+                : (userId ? hasPaidAccess(userId) : false)
+            return generateReport(safeTokenData, safeAnalysis, addressType, innerUserHasAccess)
         }
         
-    } catch (error) {
+        } catch (error) {
         // GLOBAL RULE 1 & 9: Never crash, always return safe defaults
         console.error('[AnalyzeToken] Outer error:', error)
         
@@ -2557,12 +2572,17 @@ async function analyzeToken(address: string, userId?: string, userHasPaidAccess?
         }
         
         // Check payment access for safe fallback (user-level, not token-specific)
-        const userHasAccess = userHasPaidAccess !== undefined ? userHasPaidAccess : (userId ? hasPaidAccess(userId) : false)
+        // Always re-check from stored state to ensure accuracy
+        const userHasAccess = userHasPaidAccess !== undefined 
+            ? userHasPaidAccess 
+            : (userId ? hasPaidAccess(userId) : false)
         
         if (userHasAccess) {
-            return generateReport(safeTokenData, safeAnalysis, addressType)
+            // User has access - full report, NO locked message
+            return generateReport(safeTokenData, safeAnalysis, addressType, true)
         } else {
-            return generateBasicReport(safeTokenData, safeAnalysis, addressType)
+            // User does NOT have access - basic report WITH locked message
+            return generateBasicReport(safeTokenData, safeAnalysis, addressType, false)
         }
     }
 }
