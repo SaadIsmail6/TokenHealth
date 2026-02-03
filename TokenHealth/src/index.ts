@@ -794,39 +794,49 @@ async function fetchExplorerData(address: string, chain: string): Promise<any> {
                     }
                 }
                 
-                // Fetch creation timestamp via explorer API (getblockreward)
+                // Fetch creation timestamp via explorer API
+                // Try multiple endpoints: getblockreward (works on most chains) and proxy/eth_getBlockByNumber (more reliable)
                 if (creationBlock && explorer.key) {
                     try {
-                        const blockResp = await fetch(
+                        // Method 1: Try getblockreward first (standard Etherscan/BaseScan endpoint)
+                        let blockResp = await fetch(
                             `${explorer.url}?module=block&action=getblockreward&blockno=${creationBlock}&apikey=${explorer.key}`,
-                            { signal: AbortSignal.timeout(5000) } // Reduced from 8000ms to 5000ms
+                            { signal: AbortSignal.timeout(5000) }
                         )
-                        const blockData = blockResp?.ok ? await blockResp.json() : {}
-                        // Try multiple possible timestamp fields (different APIs return different formats)
-                        const ts = blockData?.result?.timeStamp || blockData?.result?.timestamp || blockData?.timeStamp || blockData?.timestamp
+                        let blockData = blockResp?.ok ? await blockResp.json() : {}
+                        let ts = blockData?.result?.timeStamp || blockData?.result?.timestamp
+                        
+                        // Method 2: If getblockreward fails, try proxy endpoint (eth_getBlockByNumber)
+                        if (!ts && creationResult?.txHash) {
+                            try {
+                                const proxyResp = await fetch(
+                                    `${explorer.url}?module=proxy&action=eth_getBlockByNumber&tag=0x${Number(creationBlock).toString(16)}&boolean=true&apikey=${explorer.key}`,
+                                    { signal: AbortSignal.timeout(5000) }
+                                )
+                                const proxyData = proxyResp?.ok ? await proxyResp.json() : {}
+                                // Proxy returns hex timestamp, convert to decimal
+                                if (proxyData?.result?.timestamp) {
+                                    ts = parseInt(proxyData.result.timestamp, 16)
+                                }
+                            } catch (proxyErr) {
+                                // Ignore proxy errors, continue with other methods
+                            }
+                        }
                         
                         if (ts !== undefined && ts !== null) {
                             const parsedTs = Number(ts)
                             if (Number.isFinite(parsedTs) && parsedTs > 0) {
                                 creationTimestamp = parsedTs
-                                console.log('[Explorer] Successfully fetched creation timestamp from explorer:', {
+                                console.log('[Explorer] Successfully fetched creation timestamp:', {
                                     chain,
                                     address: address.slice(0, 10) + '...',
                                     blockNo: creationBlock,
                                     timestamp: creationTimestamp
                                 })
-                            } else {
-                                console.log('[Explorer] Invalid timestamp format:', { ts, blockData: JSON.stringify(blockData).slice(0, 200) })
                             }
-                        } else {
-                            console.log('[Explorer] No timestamp in block data:', { 
-                                hasResult: !!blockData?.result,
-                                resultKeys: blockData?.result ? Object.keys(blockData.result) : [],
-                                blockData: JSON.stringify(blockData).slice(0, 200)
-                            })
                         }
                     } catch (blockErr) {
-                        console.error('[Explorer] Block timestamp fetch error (explorer):', blockErr)
+                        console.error('[Explorer] Block timestamp fetch error:', blockErr)
                     }
                 }
                 
@@ -881,43 +891,52 @@ async function fetchExplorerData(address: string, chain: string): Promise<any> {
                 }
                 
                 // Fetch holder count using tokenholdercount endpoint (returns total count directly)
+                // BaseScan/Etherscan API: module=token&action=tokenholdercount
                 let holderCount: number | null = null
                 if (explorer.key) {
                     try {
                         const holderResponse = await fetch(
                             `${explorer.url}?module=token&action=tokenholdercount&contractaddress=${address}&apikey=${explorer.key}`,
-                            { signal: AbortSignal.timeout(5000) } // Reduced from 8000ms to 5000ms
+                            { signal: AbortSignal.timeout(5000) }
                         )
-                        const holderData = holderResponse?.ok ? await holderResponse.json() : {}
                         
-                        // BaseScan/Etherscan tokenholdercount returns: { status: "1", message: "OK", result: "1234" }
-                        // Some APIs return result as string, some as number
-                        if (holderData?.status === '1' && holderData?.result !== undefined && holderData?.result !== null) {
-                            const count = parseInt(String(holderData.result), 10)
-                            if (Number.isFinite(count) && count >= 0) {
-                                holderCount = count
-                                console.log('[Explorer] Successfully fetched holder count:', {
-                                    chain,
-                                    address: address.slice(0, 10) + '...',
-                                    holderCount
-                                })
+                        if (!holderResponse?.ok) {
+                            console.log('[Explorer] Holder count API HTTP error:', holderResponse.status, holderResponse.statusText)
+                        } else {
+                            const holderData = await holderResponse.json()
+                            
+                            // BaseScan/Etherscan tokenholdercount returns: { status: "1", message: "OK", result: "1234" }
+                            // Handle both string and number results, and check for error messages
+                            if (holderData?.status === '1' && holderData?.result !== undefined && holderData?.result !== null && holderData?.result !== '') {
+                                const count = parseInt(String(holderData.result), 10)
+                                if (Number.isFinite(count) && count >= 0) {
+                                    holderCount = count
+                                    console.log('[Explorer] Successfully fetched holder count:', {
+                                        chain,
+                                        address: address.slice(0, 10) + '...',
+                                        holderCount
+                                    })
+                                } else {
+                                    console.log('[Explorer] Invalid holder count - not a number:', { 
+                                        result: holderData.result,
+                                        type: typeof holderData.result
+                                    })
+                                }
                             } else {
-                                console.log('[Explorer] Invalid holder count format:', { 
-                                    result: holderData.result,
-                                    holderData: JSON.stringify(holderData).slice(0, 200)
+                                // Log the actual response to debug
+                                console.log('[Explorer] Holder count API response (not OK):', {
+                                    status: holderData?.status,
+                                    message: holderData?.message,
+                                    result: holderData?.result,
+                                    fullResponse: JSON.stringify(holderData).slice(0, 300)
                                 })
                             }
-                        } else {
-                            console.log('[Explorer] Holder count API response:', {
-                                status: holderData?.status,
-                                message: holderData?.message,
-                                hasResult: holderData?.result !== undefined,
-                                holderData: JSON.stringify(holderData).slice(0, 200)
-                            })
                         }
                     } catch (holderErr) {
                         console.error('[Explorer] Holder count fetch error:', holderErr)
                     }
+                } else {
+                    console.log('[Explorer] No API key for holder count fetch')
                 }
                 
                 return {
