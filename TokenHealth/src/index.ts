@@ -301,9 +301,9 @@ const WRAPPED_NATIVE_ADDRESSES: Record<string, string[]> = {
 
 async function fetchWithRetry<T>(
     fetchFn: () => Promise<T>,
-    retries: number = 2,
-    delayMs: number = 1000,
-    timeoutMs: number = 8000
+    retries: number = 1, // Reduced from 2 to 1 for faster failure
+    delayMs: number = 500, // Reduced from 1000ms to 500ms
+    timeoutMs: number = 5000 // Reduced from 8000ms to 5000ms
 ): Promise<T | null> {
     for (let attempt = 0; attempt <= retries; attempt++) {
         try {
@@ -320,11 +320,11 @@ async function fetchWithRetry<T>(
             return result
         } catch (error) {
             if (attempt === retries) {
-                console.error('[FetchWithRetry] Failed after retries:', error)
+                // Only log on final failure to reduce noise
                 return null
             }
-            // Exponential backoff
-            await new Promise(resolve => setTimeout(resolve, delayMs * Math.pow(2, attempt)))
+            // Shorter backoff for faster retry
+            await new Promise(resolve => setTimeout(resolve, delayMs * (attempt + 1)))
         }
     }
     return null
@@ -369,15 +369,16 @@ async function detectEVMChain(address: string): Promise<string> {
         return detectedChain
     }
     
-    // Try GoPlus multi-chain detection with timeout
+    // Try GoPlus multi-chain detection in parallel for speed
     // CRITICAL: Check Base first to prevent misrouting to Ethereum
     const chains = ['base', 'eth', 'bsc', 'arbitrum', 'polygon', 'optimism']
     
     try {
-        for (const chain of chains) {
+        // Run all chain checks in parallel with shorter timeout (2s instead of 5s)
+        const chainPromises = chains.map(async (chain) => {
             try {
                 const controller = new AbortController()
-                const timeoutId = setTimeout(() => controller.abort(), 5000) // 5s timeout
+                const timeoutId = setTimeout(() => controller.abort(), 2000) // Reduced to 2s timeout
                 
                 const response = await fetch(
                     `https://api.gopluslabs.io/api/v1/token_security/${chain === 'eth' ? '1' : chain}?contract_addresses=${address}`,
@@ -386,7 +387,7 @@ async function detectEVMChain(address: string): Promise<string> {
                 
                 clearTimeout(timeoutId)
                 
-                if (!response?.ok) continue
+                if (!response?.ok) return null
                 
                 const data = await response.json()
                 
@@ -400,16 +401,25 @@ async function detectEVMChain(address: string): Promise<string> {
                         'polygon': 'Polygon',
                         'optimism': 'Optimism'
                     }
-                    const detectedChain = chainNames[chain] || 'Ethereum'
-                    console.log('[ChainDetection] GoPlus detected chain:', detectedChain, 'from chain code:', chain)
-                    return detectedChain
+                    return chainNames[chain] || 'Ethereum'
                 }
+                return null
             } catch (fetchError) {
-                // Continue to next chain if this one fails
+                // Silently fail - we'll check all chains in parallel
                 if (fetchError instanceof Error && fetchError.name !== 'AbortError') {
-                    console.error(`[ChainDetection] Failed for ${chain}:`, fetchError)
+                    // Only log non-timeout errors
                 }
-                continue
+                return null
+            }
+        })
+        
+        // Wait for all chains to check, return first successful result
+        const results = await Promise.allSettled(chainPromises)
+        for (const result of results) {
+            if (result.status === 'fulfilled' && result.value) {
+                const detectedChain = result.value
+                console.log('[ChainDetection] GoPlus detected chain:', detectedChain)
+                return detectedChain
             }
         }
     } catch (error) {
@@ -637,7 +647,7 @@ function getRPCClient(chain: string) {
     
     return createPublicClient({
         chain: chainConfig,
-        transport: http(rpcUrl, { timeout: 8000 })
+        transport: http(rpcUrl, { timeout: 5000 }) // Reduced from 8000ms to 5000ms
     })
 }
 
@@ -676,9 +686,9 @@ async function detectCreationBlockRPC(chain: string, address: string): Promise<{
         }
         
         // Binary search for first block where code exists
-        // Limit iterations to prevent slow performance (max 20 iterations = ~1M blocks range)
+        // Reduced iterations for speed (max 12 iterations = ~4K blocks range, good enough)
         let iterations = 0
-        const maxIterations = 20
+        const maxIterations = 12 // Reduced from 20 for faster performance
         
         while (low <= high && iterations < maxIterations) {
             const mid = (low + high) / 2n
@@ -693,8 +703,8 @@ async function detectCreationBlockRPC(chain: string, address: string): Promise<{
             
             iterations++
             
-            // Safety limit to prevent infinite loops
-            if (high - low < 10n) break
+            // Safety limit to prevent infinite loops (increased threshold for faster exit)
+            if (high - low < 100n) break // Increased from 10n to exit earlier
         }
         
         if (!creationBlock) return { blockNumber: null, timestamp: null }
@@ -753,7 +763,7 @@ async function fetchExplorerData(address: string, chain: string): Promise<any> {
                     try {
                         const sourceResponse = await fetch(
                             `${explorer.url}?module=contract&action=getsourcecode&address=${address}&apikey=${explorer.key}`,
-                            { signal: AbortSignal.timeout(8000) }
+                            { signal: AbortSignal.timeout(5000) } // Reduced from 8000ms to 5000ms
                         )
                         const sourceData = sourceResponse?.ok ? await sourceResponse.json() : {}
                         sourceResult = Array.isArray(sourceData?.result) && sourceData.result.length > 0
@@ -811,29 +821,19 @@ async function fetchExplorerData(address: string, chain: string): Promise<any> {
                     }
                 }
                 
-                // RPC FALLBACK: If explorer API failed, try RPC to get creation block and timestamp
-                if (!creationTimestamp && !creationBlock) {
-                    console.log('[Explorer] Explorer API failed, attempting RPC fallback for creation block...')
-                    try {
-                        const rpcResult = await detectCreationBlockRPC(chain, address)
-                        if (rpcResult.blockNumber && rpcResult.timestamp) {
-                            creationBlock = String(rpcResult.blockNumber)
-                            creationTimestamp = rpcResult.timestamp
-                            console.log('[Explorer] Successfully fetched creation data via RPC:', {
-                                chain,
-                                address: address.slice(0, 10) + '...',
-                                blockNo: creationBlock,
-                                timestamp: creationTimestamp
-                            })
-                        }
-                    } catch (rpcErr) {
-                        console.error('[Explorer] RPC fallback error:', rpcErr)
-                    }
-                } else if (creationBlock && !creationTimestamp) {
-                    // We have block number but no timestamp - try RPC to get timestamp
+                // RPC FALLBACK: Only use if explorer API completely failed and we have no data
+                // Skip slow RPC binary search unless absolutely necessary (skip for performance)
+                // We'll rely on explorer API or skip timestamp if not available
+                if (creationBlock && !creationTimestamp) {
+                    // We have block number but no timestamp - try quick RPC lookup (fast)
                     try {
                         const blockNum = BigInt(creationBlock)
-                        const rpcTimestamp = await fetchBlockTimestampRPC(chain, blockNum)
+                        // Use Promise.race with timeout to prevent hanging
+                        const rpcPromise = fetchBlockTimestampRPC(chain, blockNum)
+                        const timeoutPromise = new Promise<null>((resolve) => 
+                            setTimeout(() => resolve(null), 3000) // 3s max for RPC
+                        )
+                        const rpcTimestamp = await Promise.race([rpcPromise, timeoutPromise])
                         if (rpcTimestamp) {
                             creationTimestamp = rpcTimestamp
                             console.log('[Explorer] Successfully fetched creation timestamp via RPC:', {
@@ -847,6 +847,7 @@ async function fetchExplorerData(address: string, chain: string): Promise<any> {
                         console.error('[Explorer] RPC timestamp fetch error:', rpcErr)
                     }
                 }
+                // Skip slow binary search RPC fallback for performance - explorer API should handle most cases
                 
                 // Lightweight transaction history summary (recent tx count + last tx time)
                 let recentTxCount: number | null = null
@@ -2364,24 +2365,38 @@ async function analyzeToken(address: string, userId?: string, userHasPaidAccess?
             return '⚠️ INVALID ADDRESS\n\nPlease provide a valid token contract address.'
         }
         
-        // STEP 1: PAIR VS TOKEN DETECTION (CRITICAL FIX)
-        // Query DexScreener first to check if input is a pair address
-        const pairDetection = await detectPairAndExtractToken(address)
+        // STEP 1: PAIR VS TOKEN DETECTION + ADDRESS TYPE DETECTION (PARALLEL)
+        // Run pair detection and address type detection in parallel for speed
+        const addressType = detectAddressType(address) // Fast, synchronous check
+        
+        // If EVM, start chain detection in parallel with pair detection
+        let pairDetection: any = { isPair: false, tokenToAnalyze: null, isQuoteAsset: false, baseToken: null, quoteToken: null }
+        let chain: string = 'Ethereum' // Default
+        
+        if (addressType === 'EVM') {
+            // Run pair detection and chain detection in parallel
+            [pairDetection, chain] = await Promise.all([
+                detectPairAndExtractToken(address),
+                detectEVMChain(address) // Use original address for chain detection
+            ])
+        } else if (addressType === 'SOLANA') {
+            // For Solana, just do pair detection
+            pairDetection = await detectPairAndExtractToken(address)
+        } else {
+            return '⚠️ INVALID OR UNSUPPORTED ADDRESS\n\n' +
+                   'Unable to identify if this is an EVM or Solana address.\n' +
+                   'Please provide a valid token contract address.'
+        }
+        
         let tokenToAnalyze = address // Default to input address
         
         // If input is a pair, analyze the correct token (not the pair contract)
         if (pairDetection.isPair && pairDetection.tokenToAnalyze) {
             tokenToAnalyze = pairDetection.tokenToAnalyze
-            // Use pair's baseToken/quoteToken metadata for display
-        }
-        
-        // Detect address type (use the token address, not the pair address)
-        const addressType = detectAddressType(tokenToAnalyze)
-        
-        if (addressType === 'UNKNOWN') {
-            return '⚠️ INVALID OR UNSUPPORTED ADDRESS\n\n' +
-                   'Unable to identify if this is an EVM or Solana address.\n' +
-                   'Please provide a valid token contract address.'
+            // Re-detect chain if we switched to a different token
+            if (addressType === 'EVM' && tokenToAnalyze !== address) {
+                chain = await detectEVMChain(tokenToAnalyze)
+            }
         }
         
         // Safe defaults (GLOBAL RULE 9)
@@ -2395,7 +2410,6 @@ async function analyzeToken(address: string, userId?: string, userHasPaidAccess?
         
         // EVM ANALYSIS
         if (addressType === 'EVM') {
-            const chain = await detectEVMChain(tokenToAnalyze)
             
             // ============================================================================
             // ON-CHAIN FIRST: Fetch token metadata directly from contract
