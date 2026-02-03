@@ -3214,5 +3214,25 @@ app.get('/.well-known/agent-metadata.json', async (c) => {
     return c.json(await bot.getIdentityMetadata())
 })
 
+// Start server for Render deployment
+// Bind to 0.0.0.0 and use PORT environment variable
+const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 5123
+const hostname = '0.0.0.0'
+
+// For Bun runtime, explicitly start server with correct hostname and port
+// This ensures Render can detect the open port
+if (typeof Bun !== 'undefined') {
+    const server = Bun.serve({
+        port,
+        hostname,
+        fetch: app.fetch,
+    })
+    console.log(`Started server: http://${hostname}:${port} (PID: ${process.pid})`)
+    console.log(`Environment: PORT=${process.env.PORT || 'default'}, NODE_ENV=${process.env.NODE_ENV || 'production'}`)
+} else {
+    // Fallback for other runtimes (shouldn't happen with Bun)
+    console.log('Bun runtime not detected, exporting app for platform handler')
+}
+
 export default app
 
