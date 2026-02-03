@@ -3220,6 +3220,8 @@ app.get('/.well-known/agent-metadata.json', async (c) => {
 const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 5123
 const hostname = '0.0.0.0'
 
+let defaultExport: any
+
 if (typeof Bun !== 'undefined') {
     // Always start server explicitly to ensure correct hostname and port
     const server = Bun.serve({
@@ -3232,9 +3234,12 @@ if (typeof Bun !== 'undefined') {
     
     // Export a simple object (not a fetch function) to prevent Bun's auto-detection
     // The server is already running above, so we don't want Bun to start another one
-    export default { started: true, port: server.port, hostname: server.hostname }
+    defaultExport = { started: true, port: server.port, hostname: server.hostname }
 } else {
     // Fallback for non-Bun runtimes: export app
-    export default app
+    defaultExport = app
 }
+
+// Export must be at top level, not inside if block
+export default defaultExport
 
