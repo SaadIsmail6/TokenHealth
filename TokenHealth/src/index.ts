@@ -615,6 +615,11 @@ async function fetchExplorerData(address: string, chain: string): Promise<any> {
         const explorer = explorerAPIs[chain]
         if (!explorer || !explorer.key) return null
         
+        console.log('[Explorer] Using explorer API:', {
+            chain,
+            baseUrl: explorer.url
+        })
+        
         return await fetchWithRetry(async () => {
             try {
                 // Get contract source (verification status, proxy info, implementation)
@@ -634,6 +639,23 @@ async function fetchExplorerData(address: string, chain: string): Promise<any> {
                 const creationResult = Array.isArray(creationData?.result) && creationData.result.length > 0
                     ? creationData.result[0]
                     : null
+                
+                // Optional: creation timestamp via block lookup (if block number is known)
+                let creationTimestamp: number | null = null
+                try {
+                    if (creationResult?.blockNumber) {
+                        const blockNo = String(creationResult.blockNumber)
+                        const blockResp = await fetch(
+                            `${explorer.url}?module=block&action=getblockreward&blockno=${blockNo}&apikey=${explorer.key}`
+                        )
+                        const blockData = blockResp?.ok ? await blockResp.json() : {}
+                        const ts = blockData?.result?.timeStamp
+                        const parsedTs = ts !== undefined && ts !== null ? Number(ts) : NaN
+                        creationTimestamp = Number.isFinite(parsedTs) ? parsedTs : null
+                    }
+                } catch (blockErr) {
+                    console.error('[Explorer] Creation timestamp fetch error:', blockErr)
+                }
                 
                 // Lightweight transaction history summary (recent tx count + last tx time)
                 // NOTE: This uses the standard *scan txlist endpoint which BaseScan supports.
@@ -665,6 +687,7 @@ async function fetchExplorerData(address: string, chain: string): Promise<any> {
                     creatorAddress: creationResult?.contractCreator || null,
                     creationTx: creationResult?.txHash || null,
                     creationBlock: creationResult?.blockNumber || null,
+                    creationTimestamp,
                     // Lightweight tx history summary
                     recentTxCount,
                     lastTxTimestamp,
@@ -1050,31 +1073,23 @@ async function calculateTokenAge(
             return { ageDays, ageHours }
         }
         
-        // Priority 2: Explorer creation block/timestamp
-        if (explorerData?.creationTx || explorerData?.creationBlock) {
+        // Priority 2: Explorer creation timestamp (exact, from BaseScan/*scan)
+        if (explorerData?.creationTimestamp) {
             try {
-                if (explorerData.creationBlock) {
-                    const blockTimes: Record<string, number> = {
-                        'Ethereum': 13,
-                        'BSC': 3,
-                        'Base': 2,
-                        'Arbitrum': 0.25,
-                        'Polygon': 2,
-                        'Optimism': 2
-                    }
-                    const blockTime = blockTimes[chain] || 13
-                    const blocksPerDay = (24 * 60 * 60) / blockTime
-                    const currentBlock = 20000000 // Approximate
-                    const creationBlockNum = parseInt(String(explorerData.creationBlock), 10)
-                    if (!isNaN(creationBlockNum) && creationBlockNum > 0) {
-                        const daysOld = (currentBlock - creationBlockNum) / blocksPerDay
-                        if (daysOld > 0) {
-                            return { ageDays: Math.floor(daysOld), ageHours: Math.floor(daysOld * 24) }
+                const nowSec = Math.floor(Date.now() / 1000)
+                const createdSec = Number(explorerData.creationTimestamp)
+                if (Number.isFinite(createdSec) && createdSec > 0 && createdSec <= nowSec) {
+                    const diffSec = nowSec - createdSec
+                    const ageDays = diffSec / (24 * 60 * 60)
+                    if (ageDays >= 0) {
+                        return {
+                            ageDays: Math.floor(ageDays),
+                            ageHours: Math.floor(diffSec / 3600)
                         }
                     }
                 }
             } catch (err) {
-                console.error('[TokenAge] Explorer block calc error:', err)
+                console.error('[TokenAge] Explorer timestamp calc error:', err)
             }
         }
         
@@ -2558,7 +2573,8 @@ async function analyzeToken(address: string, userId?: string, userHasPaidAccess?
             const safeTokenData: TokenData = {
                 name: bluechipToken?.name || 'New Token',
                 symbol: bluechipToken?.symbol || 'NEW',
-                chain: addressType === 'EVM' ? 'Ethereum' : 'Solana',
+                // Preserve detected EVM chain (Base vs Ethereum) when available
+                chain: addressType === 'EVM' ? (tokenData?.chain || 'Ethereum') : 'Solana',
                 address: tokenToAnalyze,
                 tokenAge: null,
                 pairAge: null,
@@ -2616,7 +2632,8 @@ async function analyzeToken(address: string, userId?: string, userHasPaidAccess?
         const safeTokenData: TokenData = {
             name: bluechipToken?.name || 'New Token',
             symbol: bluechipToken?.symbol || 'NEW',
-            chain: addressType === 'EVM' ? 'Ethereum' : 'Solana',
+            // Preserve detected EVM chain (Base vs Ethereum) when available
+            chain: addressType === 'EVM' ? (tokenData?.chain || 'Ethereum') : 'Solana',
             address,
             tokenAge: null,
             pairAge: null,
