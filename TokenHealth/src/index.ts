@@ -779,7 +779,7 @@ async function fetchExplorerData(address: string, chain: string): Promise<any> {
                     try {
                         const creationResponse = await fetch(
                             `${explorer.url}?module=contract&action=getcontractcreation&contractaddresses=${address}&apikey=${explorer.key}`,
-                            { signal: AbortSignal.timeout(8000) }
+                            { signal: AbortSignal.timeout(5000) } // Reduced from 8000ms to 5000ms
                         )
                         const creationData = creationResponse?.ok ? await creationResponse.json() : {}
                         creationResult = Array.isArray(creationData?.result) && creationData.result.length > 0
@@ -799,10 +799,11 @@ async function fetchExplorerData(address: string, chain: string): Promise<any> {
                     try {
                         const blockResp = await fetch(
                             `${explorer.url}?module=block&action=getblockreward&blockno=${creationBlock}&apikey=${explorer.key}`,
-                            { signal: AbortSignal.timeout(8000) }
+                            { signal: AbortSignal.timeout(5000) } // Reduced from 8000ms to 5000ms
                         )
                         const blockData = blockResp?.ok ? await blockResp.json() : {}
-                        const ts = blockData?.result?.timeStamp
+                        // Try multiple possible timestamp fields (different APIs return different formats)
+                        const ts = blockData?.result?.timeStamp || blockData?.result?.timestamp || blockData?.timeStamp || blockData?.timestamp
                         
                         if (ts !== undefined && ts !== null) {
                             const parsedTs = Number(ts)
@@ -814,7 +815,15 @@ async function fetchExplorerData(address: string, chain: string): Promise<any> {
                                     blockNo: creationBlock,
                                     timestamp: creationTimestamp
                                 })
+                            } else {
+                                console.log('[Explorer] Invalid timestamp format:', { ts, blockData: JSON.stringify(blockData).slice(0, 200) })
                             }
+                        } else {
+                            console.log('[Explorer] No timestamp in block data:', { 
+                                hasResult: !!blockData?.result,
+                                resultKeys: blockData?.result ? Object.keys(blockData.result) : [],
+                                blockData: JSON.stringify(blockData).slice(0, 200)
+                            })
                         }
                     } catch (blockErr) {
                         console.error('[Explorer] Block timestamp fetch error (explorer):', blockErr)
@@ -856,7 +865,7 @@ async function fetchExplorerData(address: string, chain: string): Promise<any> {
                     try {
                         const txResponse = await fetch(
                             `${explorer.url}?module=account&action=txlist&address=${address}&page=1&offset=10&sort=desc&apikey=${explorer.key}`,
-                            { signal: AbortSignal.timeout(8000) }
+                            { signal: AbortSignal.timeout(5000) } // Reduced from 8000ms to 5000ms
                         )
                         const txData = txResponse?.ok ? await txResponse.json() : {}
                         const txResults = Array.isArray(txData?.result) ? txData.result : []
@@ -877,12 +886,13 @@ async function fetchExplorerData(address: string, chain: string): Promise<any> {
                     try {
                         const holderResponse = await fetch(
                             `${explorer.url}?module=token&action=tokenholdercount&contractaddress=${address}&apikey=${explorer.key}`,
-                            { signal: AbortSignal.timeout(8000) }
+                            { signal: AbortSignal.timeout(5000) } // Reduced from 8000ms to 5000ms
                         )
                         const holderData = holderResponse?.ok ? await holderResponse.json() : {}
                         
                         // BaseScan/Etherscan tokenholdercount returns: { status: "1", message: "OK", result: "1234" }
-                        if (holderData?.status === '1' && holderData?.result) {
+                        // Some APIs return result as string, some as number
+                        if (holderData?.status === '1' && holderData?.result !== undefined && holderData?.result !== null) {
                             const count = parseInt(String(holderData.result), 10)
                             if (Number.isFinite(count) && count >= 0) {
                                 holderCount = count
@@ -891,7 +901,19 @@ async function fetchExplorerData(address: string, chain: string): Promise<any> {
                                     address: address.slice(0, 10) + '...',
                                     holderCount
                                 })
+                            } else {
+                                console.log('[Explorer] Invalid holder count format:', { 
+                                    result: holderData.result,
+                                    holderData: JSON.stringify(holderData).slice(0, 200)
+                                })
                             }
+                        } else {
+                            console.log('[Explorer] Holder count API response:', {
+                                status: holderData?.status,
+                                message: holderData?.message,
+                                hasResult: holderData?.result !== undefined,
+                                holderData: JSON.stringify(holderData).slice(0, 200)
+                            })
                         }
                     } catch (holderErr) {
                         console.error('[Explorer] Holder count fetch error:', holderErr)
@@ -919,7 +941,7 @@ async function fetchExplorerData(address: string, chain: string): Promise<any> {
                 console.error('[Explorer] Fetch error:', err)
                 return null
             }
-        }, 2, 1000, 8000)
+        }, 1, 500, 5000) // Updated to match optimized retry parameters
     } catch (error) {
         console.error('[Explorer] Outer error:', error)
         return null
@@ -1321,13 +1343,51 @@ async function calculateTokenAge(
             } catch (err) {
                 console.error('[TokenAge] Explorer timestamp calc error:', err)
             }
-        } else if (explorerData && !explorerData.creationTimestamp) {
-            // Log when explorer data exists but timestamp is missing
-            console.log('[TokenAge] Explorer data available but creationTimestamp missing:', {
+        }
+        
+        // Priority 3: Estimate age from creation block (if timestamp unavailable)
+        // Use approximate block times per chain
+        if (explorerData?.creationBlock && !explorerData?.creationTimestamp) {
+            try {
+                const creationBlock = Number(explorerData.creationBlock)
+                if (Number.isFinite(creationBlock) && creationBlock > 0) {
+                    // Approximate blocks per day by chain
+                    const blocksPerDay: Record<string, number> = {
+                        'Ethereum': 7200,   // ~12s per block
+                        'Base': 7200,       // ~2s per block (but similar to Ethereum for estimation)
+                        'BSC': 28800,       // ~3s per block
+                        'Arbitrum': 7200,   // ~2s per block
+                        'Polygon': 43200,   // ~2s per block
+                        'Optimism': 7200,   // ~2s per block
+                    }
+                    
+                    // Get current block estimate (approximate)
+                    // For now, use a rough estimate: assume ~7200 blocks per day for most chains
+                    const blocksPerDayEstimate = blocksPerDay[chain] || 7200
+                    
+                    // We can't get current block easily, so estimate based on known block times
+                    // This is a rough estimate - better than nothing but not as accurate as timestamp
+                    console.log('[TokenAge] Using creation block for rough age estimate:', {
+                        chain,
+                        address: address.slice(0, 10) + '...',
+                        creationBlock,
+                        note: 'Rough estimate - timestamp preferred'
+                    })
+                    // Return null for now - we need current block to calculate properly
+                    // This is logged for debugging but we'll fall back to other methods
+                }
+            } catch (err) {
+                console.error('[TokenAge] Block-based age calc error:', err)
+            }
+        }
+        
+        if (explorerData && !explorerData.creationTimestamp && !explorerData.creationBlock) {
+            // Log when explorer data exists but both timestamp and block are missing
+            console.log('[TokenAge] Explorer data available but creationTimestamp and creationBlock missing:', {
                 chain,
                 address: address.slice(0, 10) + '...',
-                hasCreationBlock: !!explorerData.creationBlock,
-                hasCreationTx: !!explorerData.creationTx
+                hasCreationTx: !!explorerData.creationTx,
+                explorerDataKeys: Object.keys(explorerData || {})
             })
         }
         
