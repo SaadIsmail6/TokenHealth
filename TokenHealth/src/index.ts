@@ -3214,25 +3214,27 @@ app.get('/.well-known/agent-metadata.json', async (c) => {
     return c.json(await bot.getIdentityMetadata())
 })
 
-// Start server for Render deployment
-// Bind to 0.0.0.0 and use PORT environment variable
+// For Render deployment: Start server explicitly with correct hostname and port
+// Bun auto-detects default exports with fetch functions, which causes a port conflict
+// Solution: Start server explicitly and export a non-fetch value to prevent auto-detection
 const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 5123
 const hostname = '0.0.0.0'
 
-// For Bun runtime, explicitly start server with correct hostname and port
-// This ensures Render can detect the open port
 if (typeof Bun !== 'undefined') {
+    // Always start server explicitly to ensure correct hostname and port
     const server = Bun.serve({
         port,
         hostname,
         fetch: app.fetch,
     })
-    console.log(`Started server: http://${hostname}:${port} (PID: ${process.pid})`)
-    console.log(`Environment: PORT=${process.env.PORT || 'default'}, NODE_ENV=${process.env.NODE_ENV || 'production'}`)
+    console.log(`Started server: http://${server.hostname}:${server.port} (PID: ${process.pid})`)
+    console.log(`Environment: PORT=${process.env.PORT || port}, NODE_ENV=${process.env.NODE_ENV || 'production'}`)
+    
+    // Export a simple object (not a fetch function) to prevent Bun's auto-detection
+    // The server is already running above, so we don't want Bun to start another one
+    export default { started: true, port: server.port, hostname: server.hostname }
 } else {
-    // Fallback for other runtimes (shouldn't happen with Bun)
-    console.log('Bun runtime not detected, exporting app for platform handler')
+    // Fallback for non-Bun runtimes: export app
+    export default app
 }
-
-export default app
 
