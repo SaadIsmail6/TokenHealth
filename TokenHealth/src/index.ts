@@ -617,23 +617,57 @@ async function fetchExplorerData(address: string, chain: string): Promise<any> {
         
         return await fetchWithRetry(async () => {
             try {
-                // Get contract source (verification status)
+                // Get contract source (verification status, proxy info, implementation)
                 const sourceResponse = await fetch(
                     `${explorer.url}?module=contract&action=getsourcecode&address=${address}&apikey=${explorer.key}`
                 )
                 const sourceData = sourceResponse?.ok ? await sourceResponse.json() : {}
+                const sourceResult = Array.isArray(sourceData?.result) && sourceData.result.length > 0
+                    ? sourceData.result[0]
+                    : null
                 
-                // Get contract creation
+                // Get contract creation (creator, creation tx/block)
                 const creationResponse = await fetch(
                     `${explorer.url}?module=contract&action=getcontractcreation&contractaddresses=${address}&apikey=${explorer.key}`
                 )
                 const creationData = creationResponse?.ok ? await creationResponse.json() : {}
+                const creationResult = Array.isArray(creationData?.result) && creationData.result.length > 0
+                    ? creationData.result[0]
+                    : null
+                
+                // Lightweight transaction history summary (recent tx count + last tx time)
+                // NOTE: This uses the standard *scan txlist endpoint which BaseScan supports.
+                let recentTxCount: number | null = null
+                let lastTxTimestamp: number | null = null
+                try {
+                    const txResponse = await fetch(
+                        `${explorer.url}?module=account&action=txlist&address=${address}&page=1&offset=10&sort=desc&apikey=${explorer.key}`
+                    )
+                    const txData = txResponse?.ok ? await txResponse.json() : {}
+                    const txResults = Array.isArray(txData?.result) ? txData.result : []
+                    if (txResults.length > 0) {
+                        recentTxCount = txResults.length
+                        const ts = txResults[0]?.timeStamp
+                        const parsedTs = ts !== undefined && ts !== null ? Number(ts) : NaN
+                        lastTxTimestamp = Number.isFinite(parsedTs) ? parsedTs : null
+                    }
+                } catch (txErr) {
+                    console.error('[Explorer] Tx history fetch error:', txErr)
+                }
                 
                 return {
-                    verified: sourceData?.result?.[0]?.SourceCode ? true : false,
-                    contractName: sourceData?.result?.[0]?.ContractName || null,
-                    creationTx: creationData?.result?.[0]?.txHash || null,
-                    creationBlock: creationData?.result?.[0]?.blockNumber || null,
+                    verified: sourceResult?.SourceCode ? true : false,
+                    contractName: sourceResult?.ContractName || null,
+                    // Proxy / implementation details (Etherscan-style, works on BaseScan)
+                    isProxy: sourceResult?.Proxy === '1',
+                    implementation: sourceResult?.Implementation || null,
+                    // Creator / creation metadata
+                    creatorAddress: creationResult?.contractCreator || null,
+                    creationTx: creationResult?.txHash || null,
+                    creationBlock: creationResult?.blockNumber || null,
+                    // Lightweight tx history summary
+                    recentTxCount,
+                    lastTxTimestamp,
                 }
             } catch (err) {
                 console.error('[Explorer] Fetch error:', err)
@@ -1307,7 +1341,11 @@ function detectSecurityFlags(
             goPlusData?.hidden_owner === '1' ||
             goPlusData?.selfdestruct === '1'
         ),
-        proxyUpgradeable: addressType === 'EVM' && goPlusData?.is_proxy === '1',
+        // Treat either GoPlus proxy flag OR explorer-reported proxy as upgradeable
+        proxyUpgradeable: addressType === 'EVM' && (
+            goPlusData?.is_proxy === '1' ||
+            explorerData?.isProxy === true
+        ),
         // Core tokens and wrapped natives: skip verification penalty
         unverifiedContract: addressType === 'EVM' && !isCore && !isWrapped && explorerData?.verified === false,
         // LIQUIDITY FIX: Only flag "noLiquidity" when we KNOW liquidity is low (not missing data)
@@ -1757,7 +1795,8 @@ function generateBasicReport(
     tokenData: TokenData,
     analysis: RiskAnalysis,
     addressType: string,
-    userHasPaidAccess: boolean = false
+    userHasPaidAccess: boolean = false,
+    explorerData?: any
 ): string {
     const divider = '━━━━━━━━━━━━━━━━━━━━━━'
     const riskEmoji = getRiskEmoji(analysis.riskLevel)
@@ -1800,7 +1839,16 @@ function generateBasicReport(
         report += `\n`
         report += `Blacklist          : ${analysis.securityFlags.blacklistAuthority ? '⚠️ Possible' : '✅ None'}\n`
         report += `\n`
-        report += `Upgradeable        : ${analysis.securityFlags.proxyUpgradeable ? '⚠️ Yes' : '❌ No'}\n`
+        if (analysis.securityFlags.proxyUpgradeable) {
+            const impl = explorerData?.implementation as string | null | undefined
+            const implShort = impl && impl.startsWith('0x') && impl.length > 10
+                ? `${impl.slice(0, 6)}...${impl.slice(-4)}`
+                : null
+            const implSuffix = implShort ? ` (impl: ${implShort})` : ''
+            report += `Upgradeable        : ⚠️ Yes${implSuffix}\n`
+        } else {
+            report += `Upgradeable        : ❌ No\n`
+        }
         report += `\n`
     } else {
         report += `Mint Authority     : ${analysis.securityFlags.mintAuthority ? '🔴 ACTIVE' : '✅ Disabled'}\n`
@@ -1892,7 +1940,8 @@ function generateReport(
     tokenData: TokenData,
     analysis: RiskAnalysis,
     addressType: string,
-    userHasPaidAccess: boolean = true
+    userHasPaidAccess: boolean = true,
+    explorerData?: any
 ): string {
     const divider = '━━━━━━━━━━━━━━━━━━━━━━'
     const riskEmoji = getRiskEmoji(analysis.riskLevel)
@@ -1935,10 +1984,40 @@ function generateReport(
         report += `\n`
         report += `Blacklist          : ${analysis.securityFlags.blacklistAuthority ? '⚠️ Possible' : '✅ None'}\n`
         report += `\n`
-        report += `Upgradeable        : ${analysis.securityFlags.proxyUpgradeable ? '⚠️ Yes' : '❌ No'}\n`
+        // Proxy / upgradeability (includes BaseScan explorer proxy detection)
+        if (analysis.securityFlags.proxyUpgradeable) {
+            const impl = explorerData?.implementation as string | null | undefined
+            const implShort = impl && impl.startsWith('0x') && impl.length > 10
+                ? `${impl.slice(0, 6)}...${impl.slice(-4)}`
+                : null
+            const implSuffix = implShort ? ` (impl: ${implShort})` : ''
+            report += `Upgradeable        : ⚠️ Yes${implSuffix}\n`
+        } else {
+            report += `Upgradeable        : ❌ No\n`
+        }
         report += `\n`
         report += `Contract Verified  : ${tokenData.contractVerified === true ? '✅ Yes' : tokenData.contractVerified === false ? '⚠️ No' : '⚠️ Unknown'}\n`
         report += `\n`
+        
+        // BaseScan / Etherscan-style explorer links and creator info (Base-specific branding for Base)
+        if (tokenData.chain === 'Base') {
+            const baseScanAddressUrl = `https://basescan.org/address/${tokenData.address}`
+            const baseScanTokenUrl = `https://basescan.org/token/${tokenData.address}`
+            const creator = explorerData?.creatorAddress as string | null | undefined
+            const creatorShort = creator && creator.startsWith('0x') && creator.length > 10
+                ? `${creator.slice(0, 6)}...${creator.slice(-4)}`
+                : null
+            
+            if (creatorShort) {
+                report += `Creator           : ${creatorShort}\n`
+                report += `\n`
+            }
+            
+            report += `BaseScan (Address) : ${baseScanAddressUrl}\n`
+            report += `\n`
+            report += `BaseScan (Token)   : ${baseScanTokenUrl}\n`
+            report += `\n`
+        }
     } else if (addressType === 'SOLANA') {
         report += `Mint Authority     : ${analysis.securityFlags.mintAuthority ? '🔴 ACTIVE' : '✅ Disabled'}\n`
         report += `\n`
@@ -2460,11 +2539,11 @@ async function analyzeToken(address: string, userId?: string, userHasPaidAccess?
             if (userHasAccess) {
                 // User has full access - show complete report, NO locked message
                 // Explicitly pass true to ensure locked message never appears
-                return generateReport(tokenData, analysis, addressType, true)
+                return generateReport(tokenData, analysis, addressType, true, explorerData)
             } else {
                 // User does NOT have access - show basic report WITH locked message
                 // Explicitly pass false to show locked message
-                return generateBasicReport(tokenData, analysis, addressType, false)
+                return generateBasicReport(tokenData, analysis, addressType, false, explorerData)
             }
             
         } catch (analysisError) {
@@ -2521,7 +2600,7 @@ async function analyzeToken(address: string, userId?: string, userHasPaidAccess?
             const innerUserHasAccess = userHasPaidAccess !== undefined 
                 ? userHasPaidAccess 
                 : (userId ? hasPaidAccess(userId) : false)
-            return generateReport(safeTokenData, safeAnalysis, addressType, innerUserHasAccess)
+            return generateReport(safeTokenData, safeAnalysis, addressType, innerUserHasAccess, null)
         }
         
         } catch (error) {
