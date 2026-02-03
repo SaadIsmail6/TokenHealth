@@ -1,11 +1,8 @@
 {
-  "name": "tokenhealth-root",
-  "version": "2.0.0",
-  "private": true,
-  "scripts": {
-    "start": "cd TokenHealth && bun run start",
-    "build": "cd TokenHealth && bun install",
-    "dev": "cd TokenHealth && bun run dev"
+  "name": "tokenhealth",
+  "version": "1.0.0",
+  "devDependencies": {
+    "towns-bot": "^1.0.3"
   }
 }
 

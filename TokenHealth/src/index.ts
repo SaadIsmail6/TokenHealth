@@ -352,21 +352,28 @@ async function detectEVMChain(address: string): Promise<string> {
     // Check whitelist first - if token is whitelisted with a specific chain, use that
     const normalizedAddress = address.toLowerCase()
     if (WELL_KNOWN_TOKENS[normalizedAddress]?.chain) {
-        return WELL_KNOWN_TOKENS[normalizedAddress].chain!
+        const detectedChain = WELL_KNOWN_TOKENS[normalizedAddress].chain!
+        console.log('[ChainDetection] Using whitelist chain:', detectedChain)
+        return detectedChain
     }
     
     // Check CORE_TOKENS and EXTENDED_BLUECHIP_LIST for chain info
     if (CORE_TOKENS[normalizedAddress]?.chain) {
-        return CORE_TOKENS[normalizedAddress].chain
+        const detectedChain = CORE_TOKENS[normalizedAddress].chain
+        console.log('[ChainDetection] Using CORE token chain:', detectedChain)
+        return detectedChain
     }
     if (EXTENDED_BLUECHIP_LIST[normalizedAddress]?.chain) {
-        return EXTENDED_BLUECHIP_LIST[normalizedAddress].chain
+        const detectedChain = EXTENDED_BLUECHIP_LIST[normalizedAddress].chain
+        console.log('[ChainDetection] Using bluechip chain:', detectedChain)
+        return detectedChain
     }
     
     // Try GoPlus multi-chain detection with timeout
+    // CRITICAL: Check Base first to prevent misrouting to Ethereum
+    const chains = ['base', 'eth', 'bsc', 'arbitrum', 'polygon', 'optimism']
+    
     try {
-        const chains = ['eth', 'bsc', 'base', 'arbitrum', 'polygon', 'optimism']
-        
         for (const chain of chains) {
             try {
                 const controller = new AbortController()
@@ -393,7 +400,9 @@ async function detectEVMChain(address: string): Promise<string> {
                         'polygon': 'Polygon',
                         'optimism': 'Optimism'
                     }
-                    return chainNames[chain] || 'Ethereum'
+                    const detectedChain = chainNames[chain] || 'Ethereum'
+                    console.log('[ChainDetection] GoPlus detected chain:', detectedChain, 'from chain code:', chain)
+                    return detectedChain
                 }
             } catch (fetchError) {
                 // Continue to next chain if this one fails
@@ -407,7 +416,8 @@ async function detectEVMChain(address: string): Promise<string> {
         console.error('[ChainDetection] Outer error:', error)
     }
     
-    // Default to Ethereum for valid EVM addresses
+    // Default to Ethereum for valid EVM addresses (only if no chain detected)
+    console.warn('[ChainDetection] No chain detected, defaulting to Ethereum for address:', address.slice(0, 10) + '...')
     return 'Ethereum'
 }
 
@@ -602,8 +612,111 @@ async function fetchGoPlusData(address: string, chain: string): Promise<any> {
     }
 }
 
+// Helper function to get RPC client for a chain
+function getRPCClient(chain: string) {
+    const rpcUrls: Record<string, string> = {
+        'Ethereum': process.env.ETHEREUM_RPC_URL || 'https://eth.llamarpc.com',
+        'Base': process.env.BASE_RPC_URL || 'https://mainnet.base.org',
+        'BSC': process.env.BSC_RPC_URL || 'https://bsc-dataseed.binance.org',
+        'Arbitrum': process.env.ARBITRUM_RPC_URL || 'https://arb1.arbitrum.io/rpc',
+        'Polygon': process.env.POLYGON_RPC_URL || 'https://polygon-rpc.com',
+    }
+    
+    const chainConfigs: Record<string, any> = {
+        'Ethereum': mainnet,
+        'Base': base,
+        'BSC': bsc,
+        'Arbitrum': arbitrum,
+        'Polygon': polygon,
+    }
+    
+    const rpcUrl = rpcUrls[chain]
+    const chainConfig = chainConfigs[chain]
+    
+    if (!rpcUrl || !chainConfig) return null
+    
+    return createPublicClient({
+        chain: chainConfig,
+        transport: http(rpcUrl, { timeout: 8000 })
+    })
+}
+
+// Helper function to fetch block timestamp via RPC
+async function fetchBlockTimestampRPC(chain: string, blockNumber: bigint): Promise<number | null> {
+    try {
+        const client = getRPCClient(chain)
+        if (!client) return null
+        
+        const block = await client.getBlock({ blockNumber })
+        return block ? Number(block.timestamp) : null
+    } catch (err) {
+        console.error('[RPC] Block timestamp fetch error:', err)
+        return null
+    }
+}
+
+// Helper function to detect creation block via RPC (getCode + first transaction)
+async function detectCreationBlockRPC(chain: string, address: string): Promise<{ blockNumber: bigint | null; timestamp: number | null }> {
+    try {
+        const client = getRPCClient(chain)
+        if (!client) return { blockNumber: null, timestamp: null }
+        
+        // Get current block
+        const currentBlock = await client.getBlockNumber()
+        
+        // Binary search for creation block (contract first appears)
+        let low = 0n
+        let high = currentBlock
+        let creationBlock: bigint | null = null
+        
+        // Check if contract exists at current block
+        const currentCode = await client.getBytecode({ address: address as `0x${string}` })
+        if (!currentCode || currentCode === '0x') {
+            return { blockNumber: null, timestamp: null }
+        }
+        
+        // Binary search for first block where code exists
+        // Limit iterations to prevent slow performance (max 20 iterations = ~1M blocks range)
+        let iterations = 0
+        const maxIterations = 20
+        
+        while (low <= high && iterations < maxIterations) {
+            const mid = (low + high) / 2n
+            const code = await client.getBytecode({ address: address as `0x${string}`, blockNumber: mid })
+            
+            if (code && code !== '0x') {
+                creationBlock = mid
+                high = mid - 1n
+            } else {
+                low = mid + 1n
+            }
+            
+            iterations++
+            
+            // Safety limit to prevent infinite loops
+            if (high - low < 10n) break
+        }
+        
+        if (!creationBlock) return { blockNumber: null, timestamp: null }
+        
+        // Get timestamp for creation block
+        const block = await client.getBlock({ blockNumber: creationBlock })
+        const timestamp = block ? Number(block.timestamp) : null
+        
+        return { blockNumber: creationBlock, timestamp }
+    } catch (err) {
+        console.error('[RPC] Creation block detection error:', err)
+        return { blockNumber: null, timestamp: null }
+    }
+}
+
 async function fetchExplorerData(address: string, chain: string): Promise<any> {
     try {
+        // CRITICAL: Ensure Base tokens never route through Etherscan
+        if (chain === 'Base') {
+            console.log('[Explorer] Base chain detected - using BaseScan API only')
+        }
+        
         const explorerAPIs: Record<string, { url: string; key: string }> = {
             'Ethereum': { url: 'https://api.etherscan.io/api', key: process.env.ETHERSCAN_API_KEY || '' },
             'BSC': { url: 'https://api.bscscan.com/api', key: process.env.BSCSCAN_API_KEY || '' },
@@ -613,112 +726,175 @@ async function fetchExplorerData(address: string, chain: string): Promise<any> {
         }
         
         const explorer = explorerAPIs[chain]
-        if (!explorer || !explorer.key) return null
+        if (!explorer) {
+            console.error('[Explorer] No explorer API configured for chain:', chain)
+            return null
+        }
+        
+        if (!explorer.key) {
+            console.warn('[Explorer] No API key configured for chain:', chain, '- attempting RPC fallback only')
+        }
         
         console.log('[Explorer] Using explorer API:', {
             chain,
-            baseUrl: explorer.url
+            baseUrl: explorer.url,
+            hasApiKey: !!explorer.key
         })
         
         return await fetchWithRetry(async () => {
             try {
+                let sourceResult: any = null
+                let creationResult: any = null
+                let creationTimestamp: number | null = null
+                let creationBlock: string | null = null
+                
                 // Get contract source (verification status, proxy info, implementation)
-                const sourceResponse = await fetch(
-                    `${explorer.url}?module=contract&action=getsourcecode&address=${address}&apikey=${explorer.key}`
-                )
-                const sourceData = sourceResponse?.ok ? await sourceResponse.json() : {}
-                const sourceResult = Array.isArray(sourceData?.result) && sourceData.result.length > 0
-                    ? sourceData.result[0]
-                    : null
+                if (explorer.key) {
+                    try {
+                        const sourceResponse = await fetch(
+                            `${explorer.url}?module=contract&action=getsourcecode&address=${address}&apikey=${explorer.key}`,
+                            { signal: AbortSignal.timeout(8000) }
+                        )
+                        const sourceData = sourceResponse?.ok ? await sourceResponse.json() : {}
+                        sourceResult = Array.isArray(sourceData?.result) && sourceData.result.length > 0
+                            ? sourceData.result[0]
+                            : null
+                    } catch (sourceErr) {
+                        console.error('[Explorer] Source code fetch error:', sourceErr)
+                    }
+                }
                 
                 // Get contract creation (creator, creation tx/block)
-                const creationResponse = await fetch(
-                    `${explorer.url}?module=contract&action=getcontractcreation&contractaddresses=${address}&apikey=${explorer.key}`
-                )
-                const creationData = creationResponse?.ok ? await creationResponse.json() : {}
-                const creationResult = Array.isArray(creationData?.result) && creationData.result.length > 0
-                    ? creationData.result[0]
-                    : null
-                
-                // Optional: creation timestamp via block lookup (if block number is known)
-                // BaseScan/Etherscan: Use getblockreward or getblocknobytime to get timestamp
-                let creationTimestamp: number | null = null
-                try {
-                    if (creationResult?.blockNumber) {
-                        const blockNo = String(creationResult.blockNumber)
-                        // Try getblockreward first (works on BaseScan/Etherscan)
-                        let blockResp = await fetch(
-                            `${explorer.url}?module=block&action=getblockreward&blockno=${blockNo}&apikey=${explorer.key}`
+                if (explorer.key) {
+                    try {
+                        const creationResponse = await fetch(
+                            `${explorer.url}?module=contract&action=getcontractcreation&contractaddresses=${address}&apikey=${explorer.key}`,
+                            { signal: AbortSignal.timeout(8000) }
                         )
-                        let blockData = blockResp?.ok ? await blockResp.json() : {}
-                        let ts = blockData?.result?.timeStamp
+                        const creationData = creationResponse?.ok ? await creationResponse.json() : {}
+                        creationResult = Array.isArray(creationData?.result) && creationData.result.length > 0
+                            ? creationData.result[0]
+                            : null
                         
-                        // Fallback: Try getblocknobytime if getblockreward doesn't return timestamp
-                        if (!ts && blockData?.result) {
-                            // Alternative: Get block by number using eth_getBlockByNumber equivalent
-                            // For now, try parsing from creationTx if available
-                            if (creationResult?.txHash) {
-                                const txResp = await fetch(
-                                    `${explorer.url}?module=proxy&action=eth_getTransactionByHash&txhash=${creationResult.txHash}&apikey=${explorer.key}`
-                                )
-                                const txData = txResp?.ok ? await txResp.json() : {}
-                                // Note: This returns hex, would need conversion - skip for now
+                        if (creationResult?.blockNumber) {
+                            creationBlock = String(creationResult.blockNumber)
+                        }
+                    } catch (creationErr) {
+                        console.error('[Explorer] Contract creation fetch error:', creationErr)
+                    }
+                }
+                
+                // Fetch creation timestamp via explorer API (getblockreward)
+                if (creationBlock && explorer.key) {
+                    try {
+                        const blockResp = await fetch(
+                            `${explorer.url}?module=block&action=getblockreward&blockno=${creationBlock}&apikey=${explorer.key}`,
+                            { signal: AbortSignal.timeout(8000) }
+                        )
+                        const blockData = blockResp?.ok ? await blockResp.json() : {}
+                        const ts = blockData?.result?.timeStamp
+                        
+                        if (ts !== undefined && ts !== null) {
+                            const parsedTs = Number(ts)
+                            if (Number.isFinite(parsedTs) && parsedTs > 0) {
+                                creationTimestamp = parsedTs
+                                console.log('[Explorer] Successfully fetched creation timestamp from explorer:', {
+                                    chain,
+                                    address: address.slice(0, 10) + '...',
+                                    blockNo: creationBlock,
+                                    timestamp: creationTimestamp
+                                })
                             }
                         }
-                        
-                        const parsedTs = ts !== undefined && ts !== null ? Number(ts) : NaN
-                        creationTimestamp = Number.isFinite(parsedTs) ? parsedTs : null
-                        
-                        if (creationTimestamp) {
-                            console.log('[Explorer] Successfully fetched creation timestamp:', {
+                    } catch (blockErr) {
+                        console.error('[Explorer] Block timestamp fetch error (explorer):', blockErr)
+                    }
+                }
+                
+                // RPC FALLBACK: If explorer API failed, try RPC to get creation block and timestamp
+                if (!creationTimestamp && !creationBlock) {
+                    console.log('[Explorer] Explorer API failed, attempting RPC fallback for creation block...')
+                    try {
+                        const rpcResult = await detectCreationBlockRPC(chain, address)
+                        if (rpcResult.blockNumber && rpcResult.timestamp) {
+                            creationBlock = String(rpcResult.blockNumber)
+                            creationTimestamp = rpcResult.timestamp
+                            console.log('[Explorer] Successfully fetched creation data via RPC:', {
                                 chain,
                                 address: address.slice(0, 10) + '...',
-                                blockNo,
+                                blockNo: creationBlock,
                                 timestamp: creationTimestamp
                             })
                         }
+                    } catch (rpcErr) {
+                        console.error('[Explorer] RPC fallback error:', rpcErr)
                     }
-                } catch (blockErr) {
-                    console.error('[Explorer] Creation timestamp fetch error:', blockErr)
+                } else if (creationBlock && !creationTimestamp) {
+                    // We have block number but no timestamp - try RPC to get timestamp
+                    try {
+                        const blockNum = BigInt(creationBlock)
+                        const rpcTimestamp = await fetchBlockTimestampRPC(chain, blockNum)
+                        if (rpcTimestamp) {
+                            creationTimestamp = rpcTimestamp
+                            console.log('[Explorer] Successfully fetched creation timestamp via RPC:', {
+                                chain,
+                                address: address.slice(0, 10) + '...',
+                                blockNo: creationBlock,
+                                timestamp: creationTimestamp
+                            })
+                        }
+                    } catch (rpcErr) {
+                        console.error('[Explorer] RPC timestamp fetch error:', rpcErr)
+                    }
                 }
                 
                 // Lightweight transaction history summary (recent tx count + last tx time)
-                // NOTE: This uses the standard *scan txlist endpoint which BaseScan supports.
                 let recentTxCount: number | null = null
                 let lastTxTimestamp: number | null = null
-                try {
-                    const txResponse = await fetch(
-                        `${explorer.url}?module=account&action=txlist&address=${address}&page=1&offset=10&sort=desc&apikey=${explorer.key}`
-                    )
-                    const txData = txResponse?.ok ? await txResponse.json() : {}
-                    const txResults = Array.isArray(txData?.result) ? txData.result : []
-                    if (txResults.length > 0) {
-                        recentTxCount = txResults.length
-                        const ts = txResults[0]?.timeStamp
-                        const parsedTs = ts !== undefined && ts !== null ? Number(ts) : NaN
-                        lastTxTimestamp = Number.isFinite(parsedTs) ? parsedTs : null
+                if (explorer.key) {
+                    try {
+                        const txResponse = await fetch(
+                            `${explorer.url}?module=account&action=txlist&address=${address}&page=1&offset=10&sort=desc&apikey=${explorer.key}`,
+                            { signal: AbortSignal.timeout(8000) }
+                        )
+                        const txData = txResponse?.ok ? await txResponse.json() : {}
+                        const txResults = Array.isArray(txData?.result) ? txData.result : []
+                        if (txResults.length > 0) {
+                            recentTxCount = txResults.length
+                            const ts = txResults[0]?.timeStamp
+                            const parsedTs = ts !== undefined && ts !== null ? Number(ts) : NaN
+                            lastTxTimestamp = Number.isFinite(parsedTs) ? parsedTs : null
+                        }
+                    } catch (txErr) {
+                        console.error('[Explorer] Tx history fetch error:', txErr)
                     }
-                } catch (txErr) {
-                    console.error('[Explorer] Tx history fetch error:', txErr)
                 }
                 
-                // Fetch holder count for ERC20 tokens (BaseScan/Etherscan tokenholderlist endpoint)
+                // Fetch holder count using tokenholdercount endpoint (returns total count directly)
                 let holderCount: number | null = null
-                try {
-                    const holderResponse = await fetch(
-                        `${explorer.url}?module=token&action=tokenholderlist&contractaddress=${address}&page=1&offset=1&apikey=${explorer.key}`
-                    )
-                    const holderData = holderResponse?.ok ? await holderResponse.json() : {}
-                    // BaseScan/Etherscan returns total count in result array length or status message
-                    // For accurate count, we'd need to paginate, but we can at least detect if holders exist
-                    if (Array.isArray(holderData?.result) && holderData.result.length > 0) {
-                        // If we get results, try to get total from status or use a placeholder
-                        // Note: Full count requires pagination, but we can indicate holders exist
-                        // For now, we'll rely on GoPlus for exact count, but this confirms token has holders
-                        holderCount = holderData.result.length > 0 ? -1 : null // -1 = "has holders but count unknown"
+                if (explorer.key) {
+                    try {
+                        const holderResponse = await fetch(
+                            `${explorer.url}?module=token&action=tokenholdercount&contractaddress=${address}&apikey=${explorer.key}`,
+                            { signal: AbortSignal.timeout(8000) }
+                        )
+                        const holderData = holderResponse?.ok ? await holderResponse.json() : {}
+                        
+                        // BaseScan/Etherscan tokenholdercount returns: { status: "1", message: "OK", result: "1234" }
+                        if (holderData?.status === '1' && holderData?.result) {
+                            const count = parseInt(String(holderData.result), 10)
+                            if (Number.isFinite(count) && count >= 0) {
+                                holderCount = count
+                                console.log('[Explorer] Successfully fetched holder count:', {
+                                    chain,
+                                    address: address.slice(0, 10) + '...',
+                                    holderCount
+                                })
+                            }
+                        }
+                    } catch (holderErr) {
+                        console.error('[Explorer] Holder count fetch error:', holderErr)
                     }
-                } catch (holderErr) {
-                    console.error('[Explorer] Holder count fetch error:', holderErr)
                 }
                 
                 return {
@@ -730,19 +906,19 @@ async function fetchExplorerData(address: string, chain: string): Promise<any> {
                     // Creator / creation metadata
                     creatorAddress: creationResult?.contractCreator || null,
                     creationTx: creationResult?.txHash || null,
-                    creationBlock: creationResult?.blockNumber || null,
+                    creationBlock: creationBlock || creationResult?.blockNumber || null,
                     creationTimestamp,
                     // Lightweight tx history summary
                     recentTxCount,
                     lastTxTimestamp,
-                    // Holder count (from BaseScan tokenholderlist, -1 = has holders but exact count unknown)
+                    // Holder count (from BaseScan/Etherscan tokenholdercount endpoint)
                     holderCount,
                 }
             } catch (err) {
                 console.error('[Explorer] Fetch error:', err)
                 return null
             }
-        })
+        }, 2, 1000, 8000)
     } catch (error) {
         console.error('[Explorer] Outer error:', error)
         return null
