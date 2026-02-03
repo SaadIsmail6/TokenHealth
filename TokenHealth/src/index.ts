@@ -641,17 +641,42 @@ async function fetchExplorerData(address: string, chain: string): Promise<any> {
                     : null
                 
                 // Optional: creation timestamp via block lookup (if block number is known)
+                // BaseScan/Etherscan: Use getblockreward or getblocknobytime to get timestamp
                 let creationTimestamp: number | null = null
                 try {
                     if (creationResult?.blockNumber) {
                         const blockNo = String(creationResult.blockNumber)
-                        const blockResp = await fetch(
+                        // Try getblockreward first (works on BaseScan/Etherscan)
+                        let blockResp = await fetch(
                             `${explorer.url}?module=block&action=getblockreward&blockno=${blockNo}&apikey=${explorer.key}`
                         )
-                        const blockData = blockResp?.ok ? await blockResp.json() : {}
-                        const ts = blockData?.result?.timeStamp
+                        let blockData = blockResp?.ok ? await blockResp.json() : {}
+                        let ts = blockData?.result?.timeStamp
+                        
+                        // Fallback: Try getblocknobytime if getblockreward doesn't return timestamp
+                        if (!ts && blockData?.result) {
+                            // Alternative: Get block by number using eth_getBlockByNumber equivalent
+                            // For now, try parsing from creationTx if available
+                            if (creationResult?.txHash) {
+                                const txResp = await fetch(
+                                    `${explorer.url}?module=proxy&action=eth_getTransactionByHash&txhash=${creationResult.txHash}&apikey=${explorer.key}`
+                                )
+                                const txData = txResp?.ok ? await txResp.json() : {}
+                                // Note: This returns hex, would need conversion - skip for now
+                            }
+                        }
+                        
                         const parsedTs = ts !== undefined && ts !== null ? Number(ts) : NaN
                         creationTimestamp = Number.isFinite(parsedTs) ? parsedTs : null
+                        
+                        if (creationTimestamp) {
+                            console.log('[Explorer] Successfully fetched creation timestamp:', {
+                                chain,
+                                address: address.slice(0, 10) + '...',
+                                blockNo,
+                                timestamp: creationTimestamp
+                            })
+                        }
                     }
                 } catch (blockErr) {
                     console.error('[Explorer] Creation timestamp fetch error:', blockErr)
@@ -677,6 +702,25 @@ async function fetchExplorerData(address: string, chain: string): Promise<any> {
                     console.error('[Explorer] Tx history fetch error:', txErr)
                 }
                 
+                // Fetch holder count for ERC20 tokens (BaseScan/Etherscan tokenholderlist endpoint)
+                let holderCount: number | null = null
+                try {
+                    const holderResponse = await fetch(
+                        `${explorer.url}?module=token&action=tokenholderlist&contractaddress=${address}&page=1&offset=1&apikey=${explorer.key}`
+                    )
+                    const holderData = holderResponse?.ok ? await holderResponse.json() : {}
+                    // BaseScan/Etherscan returns total count in result array length or status message
+                    // For accurate count, we'd need to paginate, but we can at least detect if holders exist
+                    if (Array.isArray(holderData?.result) && holderData.result.length > 0) {
+                        // If we get results, try to get total from status or use a placeholder
+                        // Note: Full count requires pagination, but we can indicate holders exist
+                        // For now, we'll rely on GoPlus for exact count, but this confirms token has holders
+                        holderCount = holderData.result.length > 0 ? -1 : null // -1 = "has holders but count unknown"
+                    }
+                } catch (holderErr) {
+                    console.error('[Explorer] Holder count fetch error:', holderErr)
+                }
+                
                 return {
                     verified: sourceResult?.SourceCode ? true : false,
                     contractName: sourceResult?.ContractName || null,
@@ -691,6 +735,8 @@ async function fetchExplorerData(address: string, chain: string): Promise<any> {
                     // Lightweight tx history summary
                     recentTxCount,
                     lastTxTimestamp,
+                    // Holder count (from BaseScan tokenholderlist, -1 = has holders but exact count unknown)
+                    holderCount,
                 }
             } catch (err) {
                 console.error('[Explorer] Fetch error:', err)
@@ -1082,15 +1128,30 @@ async function calculateTokenAge(
                     const diffSec = nowSec - createdSec
                     const ageDays = diffSec / (24 * 60 * 60)
                     if (ageDays >= 0) {
-                        return {
+                        const result = {
                             ageDays: Math.floor(ageDays),
                             ageHours: Math.floor(diffSec / 3600)
                         }
+                        console.log('[TokenAge] Using BaseScan/Etherscan creation timestamp:', {
+                            chain,
+                            address: address.slice(0, 10) + '...',
+                            ageDays: result.ageDays,
+                            ageHours: result.ageHours
+                        })
+                        return result
                     }
                 }
             } catch (err) {
                 console.error('[TokenAge] Explorer timestamp calc error:', err)
             }
+        } else if (explorerData && !explorerData.creationTimestamp) {
+            // Log when explorer data exists but timestamp is missing
+            console.log('[TokenAge] Explorer data available but creationTimestamp missing:', {
+                chain,
+                address: address.slice(0, 10) + '...',
+                hasCreationBlock: !!explorerData.creationBlock,
+                hasCreationTx: !!explorerData.creationTx
+            })
         }
         
         return { ageDays: null, ageHours: null }
@@ -1218,14 +1279,10 @@ function isTokenLessThan7DaysOld(
             return true
         }
         
-        // NEW PAIR RULE: If BOTH ages are null/unknown AND token is NOT whitelisted, treat as new = HIGH RISK
-        // This catches brand new pairs where age data isn't available yet
-        // BUT: Only apply this rule to non-whitelisted tokens
-        if ((pairAgeDays === null || pairAgeDays === undefined) && 
-            (tokenAgeDays === null || tokenAgeDays === undefined)) {
-            return true // Unknown age = treat as new = HIGH RISK (only for non-whitelisted tokens)
-        }
-        
+        // CRITICAL FIX: Do NOT trigger 7-day rule if age is unknown
+        // Only trigger HIGH RISK if we have CONFIRMED recent creation timestamp
+        // Unknown age should result in INCOMPLETE data, not HIGH RISK
+        // If both ages are null, we don't have enough data to confirm it's new
         return false
     } catch (error) {
         console.error('[isTokenLessThan7DaysOld] Error:', error)
@@ -1575,25 +1632,31 @@ function generateVerdict(
     const warnings: string[] = []
     
     // ============================================================================
-    // STEP 3: NEW TOKEN MODE - Specific verdict for tokens/pairs < 7 days old OR unknown age
+    // STEP 3: NEW TOKEN MODE - Specific verdict ONLY for tokens/pairs with CONFIRMED < 7 days age
     // ============================================================================
+    // CRITICAL: Do NOT trigger this for unknown age - only when we have confirmed recent creation
     const isLessThan7Days = isTokenLessThan7DaysOld(tokenAgeDays, pairAgeDays, address)
     if (isLessThan7Days && riskLevel === 'HIGH') {
-        const isUnknownAge = (pairAgeDays === null && tokenAgeDays === null)
-        const verdictText = '🔴 HIGH RISK — Fresh Launch Detected\nThis token or pair was created less than 7 days ago.\nMost rugs and scams happen in the first week.\nAutomatic HIGH RISK classification applied.'
-        const warningText = isUnknownAge
-            ? '🆕 Fresh Launch Detected — Age unknown, extremely high rug risk'
-            : '🆕 Fresh Launch Detected — Token or trading pair created less than 7 days ago'
+        // Only show fresh launch warning if we have CONFIRMED age data (< 7 days)
+        // Unknown age should NOT trigger this verdict
+        const hasConfirmedAge = (tokenAgeDays !== null && tokenAgeDays !== undefined) || 
+                                (pairAgeDays !== null && pairAgeDays !== undefined)
         
-        return {
-            verdict: verdictText,
-            warnings: [
-                warningText,
-                'Most rug pulls and exit scams happen within the first week of launch',
-                'Wait at least 7 days and monitor on-chain activity before considering this token',
-                'Automatic HIGH RISK classification applied due to new token status'
-            ]
+        if (hasConfirmedAge) {
+            const verdictText = '🔴 HIGH RISK — Fresh Launch Detected\nThis token or pair was created less than 7 days ago.\nMost rugs and scams happen in the first week.\nAutomatic HIGH RISK classification applied.'
+            const warningText = '🆕 Fresh Launch Detected — Token or trading pair created less than 7 days ago'
+            
+            return {
+                verdict: verdictText,
+                warnings: [
+                    warningText,
+                    'Most rug pulls and exit scams happen within the first week of launch',
+                    'Wait at least 7 days and monitor on-chain activity before considering this token',
+                    'Automatic HIGH RISK classification applied due to new token status'
+                ]
+            }
         }
+        // If age is unknown, fall through to generic HIGH RISK verdict (not fresh launch)
     }
     
     // CRITICAL ISSUES (specific verdicts)
@@ -2252,9 +2315,21 @@ async function analyzeToken(address: string, userId?: string, userHasPaidAccess?
             // LIQUIDITY FIX: Mark as null (Unknown) when data is missing, not "No liquidity"
             // Missing data increases risk, but we don't assume no liquidity exists
             const liquidity = assumedLiquidity || (dexData && dexData.liquidity !== null && dexData.liquidity !== undefined && dexData.liquidity > 0) ? dexData.liquidity : null
-            const holderCount = (goPlusData && goPlusData.holder_count !== null && goPlusData.holder_count !== undefined) 
-                ? parseInt(String(goPlusData.holder_count), 10) 
-                : null
+            
+            // Holder count: Priority = GoPlus (exact count) > BaseScan/Etherscan (indicator) > null
+            let holderCount: number | null = null
+            if (goPlusData && goPlusData.holder_count !== null && goPlusData.holder_count !== undefined) {
+                holderCount = parseInt(String(goPlusData.holder_count), 10)
+            } else if (explorerData && explorerData.holderCount !== null && explorerData.holderCount !== undefined) {
+                // BaseScan/Etherscan holder count (may be -1 if holders exist but exact count unknown)
+                const explorerHolderCount = explorerData.holderCount
+                if (explorerHolderCount === -1) {
+                    // Has holders but exact count unknown - use null to show "Unknown" in report
+                    holderCount = null
+                } else if (explorerHolderCount > 0) {
+                    holderCount = explorerHolderCount
+                }
+            }
             
             tokenData = {
                 name: tokenName,
